@@ -10,39 +10,54 @@
                 <nav class="navbar-sidebar">
                     <ul class="list-unstyled navbar__list">
                          <li>
-                            <a class="js-arrow" href="/login">
-                                <i class="fas fa-tachometer-alt"></i>Login</a>
+                            <a href="/login">
+                                <i class="fas fa-arrow-right-to-bracket"></i>Login</a>
                         </li>
                         <li>
-                            <a class="js-arrow" href="/home">
+                            <a href="/home">
                                 <i class="fas fa-tachometer-alt"></i>Dashboard</a>
                         </li>
                         <li>
-                            <a href="/course">
-                                <i class="fas fa-chart-bar"></i>Course</a>
+                            <a href="{{ route('assignment.index') }}">
+                                <i class="fas fa-book"></i>Tugas</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('jadwal.index') }}">
+                                <i class="fas fa-calendar"></i>Jadwal</a>
                         </li>
                         <li>
                             <a href="/userdata">
                                 <i class="fas fa-table"></i>Userdata</a>
                         </li>
-                        <li class="has-sub">
+                         <li class="has-sub">
                             <a class="js-arrow" href="#">
-                                <i class="fas fa-desktop"></i>Cyber Menu</a>
-                            <ul class="list-unstyled navbar__sub-list js-sub-list">
+                                <i class="fas fa-tachometer-alt"></i>Data</a>
+                            <ul class="navbar-mobile-sub__list list-unstyled js-sub-list">
                                 <li>
-                                    <a href="{{ route('jadwal.index') }}">Jadwal</a>
+                                    <a href="{{ route('course.index') }}">Mata Pelajaran</a>
                                 </li>
                                 <li>
-                                    <a href="{{ route('assignment.index') }}">Tugas (Assignment)</a>
+                                    <a href="{{ route('class.index') }}">Kelas</a>
                                 </li>
                                 <li>
-                                    <a href="/assignment/review">Data Nilai</a>
+                                    <a href="{{ route('academicyear.index') }}">Tahun Ajaran</a>
+                                </li>
+                                <li>
+                                    <a href="{{ route('block.index') }}">Blok</a>
                                 </li>
                             </ul>
                         </li>
                         <li>
+                            <a href="/assignment/review">
+                                <i class="fas fa-file-pen"></i>Data Nilai</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('activity.log') }}">
+                                <i class="fa-solid fa-chart-column"></i>Activity Log</a>
+                        </li>
+                        <li>
                             <a href="/database">
-                                <i class="fas fa-cog"></i>Back up Database</a>
+                                <i class="fas fa-database"></i>Back up Database</a>
                         </li>
                         <li>
                             <a href="/database">
@@ -50,7 +65,7 @@
                         </li>
                         <li>
                             <a href="/setting">
-                                <i class="fas fa-cog"></i>Trash Can</a>
+                                <i class="fas fa-trash"></i>Trash Can</a>
                         </li>
                         <li>
                             <a href="/setting">
@@ -59,7 +74,7 @@
 
                         <li class="has-sub">
                             <a class="js-arrow" href="#">
-                                <i class="fas fa-copy"></i>Akun</a>
+                                <i class="fas fa-circle-user"></i>Akun</a>
                             <ul class="list-unstyled navbar__sub-list js-sub-list">
                                 <li>
                                     <a href="/profile">Profil</a>

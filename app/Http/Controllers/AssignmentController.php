@@ -10,6 +10,7 @@ use App\Models\AcademicYear;
 use App\Models\Block;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use App\Helpers\ActivityLogger;
 
 class AssignmentController extends Controller
 {
@@ -25,6 +26,13 @@ class AssignmentController extends Controller
                 });
             } else {
                 $query->whereRaw('1=0');
+            }
+        } elseif (session('level') == 2) {
+            $teacher = DB::table('teacher')->where('userid', session('userid'))->first();
+            if ($teacher) {
+                $query->whereHas('schedule', function($q) use ($teacher) {
+                    $q->where('teacherid', $teacher->teacherid);
+                });
             }
         }
         $assignments = $query->get();
@@ -42,13 +50,124 @@ class AssignmentController extends Controller
 
         $schedules = Schedule::with(['course', 'classroom'])
             ->where('academic_year_id', $activeYear->academic_year_id)
-            ->where('block_id', $activeBlock->block_id)
-            ->get();
+            ->where('block_id', $activeBlock->block_id);
+
+        if (session('level') == 2) {
+            $teacher = DB::table('teacher')->where('userid', session('userid'))->first();
+            if ($teacher) {
+                $schedules->where('teacherid', $teacher->teacherid);
+            }
+        }
+
+        $schedules = $schedules->get();
+
+        // Ambil daftar mata pelajaran untuk filter
+        $courses = collect();
+        $submittedIds = [];
+
+        if (session('level') == 3) {
+             $student = DB::table('student')->where('userid', session('userid'))->first();
+             if ($student) {
+                 $courses = Schedule::with('course')
+                     ->where('classid', $student->classid)
+                     ->get()
+                     ->pluck('course')
+                     ->unique('courseid');
+                 
+                 // Ambil ID tugas yang sudah dikumpulkan
+                 $submittedIds = DB::table('quest')
+                    ->where('studentid', $student->studentid)
+                    ->pluck('assignmentid')
+                    ->toArray();
+             }
+        } elseif (session('level') == 2) {
+             $teacher = DB::table('teacher')->where('userid', session('userid'))->first();
+             if ($teacher) {
+                 $courses = Schedule::with('course')
+                     ->where('teacherid', $teacher->teacherid)
+                     ->get()
+                     ->pluck('course')
+                     ->unique('courseid');
+             }
+        }
 
         echo view('all.header', compact('system'));
         echo view('all.menu', compact('system'));
-        echo view('cyber.assignment.index', compact('assignments', 'schedules'));
+        echo view('cyber.assignment.index', compact('assignments', 'schedules', 'courses', 'submittedIds'));
         echo view('all.footer');
+    }
+
+    public function filter(Request $request)
+    {
+        $courseId = $request->query('course_id');
+        $status = $request->query('status'); // 'all', 'completed', 'pending'
+
+        $query = Assignment::with('schedule.course', 'schedule.classroom');
+        $student = null;
+        $submittedIds = [];
+
+        if (session('level') == 3) {
+            $student = DB::table('student')->where('userid', session('userid'))->first();
+            if ($student) {
+                $query->whereHas('schedule', function($q) use ($student) {
+                    $q->where('classid', $student->classid);
+                });
+
+                // Ambil ID tugas yang sudah dikumpulkan
+                 $submittedIds = DB::table('quest')
+                    ->where('studentid', $student->studentid)
+                    ->pluck('assignmentid')
+                    ->toArray();
+
+            } else {
+                return response()->json([]);
+            }
+        } elseif (session('level') == 2) {
+            $teacher = DB::table('teacher')->where('userid', session('userid'))->first();
+            if ($teacher) {
+                $query->whereHas('schedule', function($q) use ($teacher) {
+                    $q->where('teacherid', $teacher->teacherid);
+                });
+            } else {
+                return response()->json([]);
+            }
+        }
+
+        if ($courseId && $courseId != 'all') {
+            $query->whereHas('schedule', function($q) use ($courseId) {
+                $q->where('courseid', $courseId);
+            });
+        }
+
+        $assignments = $query->get();
+
+        // Filter status manually since it involves a relationship check (quest table)
+        if ($status && $status != 'all' && session('level') == 3 && $student) {
+            $assignments = $assignments->filter(function($assignment) use ($status, $student) {
+                $isSubmitted = DB::table('quest')
+                    ->where('assignmentid', $assignment->assignmentid)
+                    ->where('studentid', $student->studentid)
+                    ->exists();
+                
+                if ($status == 'completed') {
+                    return $isSubmitted;
+                } elseif ($status == 'pending') {
+                    return !$isSubmitted;
+                }
+                return true;
+            });
+        }
+
+        // Return partial view or JSON data
+        // For simplicity, let's return the HTML of the cards directly
+        // We need to loop through assignments and generate HTML string
+        
+        $html = '';
+        foreach ($assignments as $assignment) {
+            $html .= view('cyber.assignment.card', compact('assignment', 'submittedIds'))->render();
+        }
+
+        return response()->json(['html' => $html]);
     }
 
     public function review(Request $request)
@@ -134,6 +253,8 @@ class AssignmentController extends Controller
                 'updated_at' => now(),
             ]);
 
+        ActivityLogger::log("Memberi Nilai: {$request->score} untuk siswa ID {$request->studentid} pada tugas ID {$request->assignmentid}", $request->ip());
+
         return back()->with('success', 'Nilai tersimpan');
     }
     public function show($id)
@@ -214,6 +335,10 @@ class AssignmentController extends Controller
                         'score' => $assignment->auto_score,
                         'updated_at' => now(),
                     ]);
+                
+                ActivityLogger::log("Mengumpulkan Tugas: {$assignment->name} (Auto Score: {$assignment->auto_score})", $request->ip());
+            } else {
+                ActivityLogger::log("Mengumpulkan Tugas: {$assignment->name}", $request->ip());
             }
 
             return back()->with('success', 'Tugas telah dikumpul');
@@ -233,6 +358,18 @@ class AssignmentController extends Controller
             'time_start' => 'required|date',
             'time_end' => 'required|date|after:time_start',
         ]);
+
+        if (session('level') == 2) {
+            $teacher = DB::table('teacher')->where('userid', session('userid'))->first();
+            if ($teacher) {
+                $schedule = DB::table('schedule')->where('scheduleid', $request->scheduleid)->first();
+                if (!$schedule || $schedule->teacherid != $teacher->teacherid) {
+                     return back()->with('error', 'Anda tidak berhak membuat tugas untuk jadwal ini');
+                }
+            } else {
+                return back()->with('error', 'Data guru tidak ditemukan');
+            }
+        }
 
         Assignment::create([
             'scheduleid' => $request->scheduleid,
@@ -265,6 +402,14 @@ class AssignmentController extends Controller
             return back()->with('error', 'Tugas tidak ditemukan');
         }
 
+        if (session('level') == 2) {
+            $teacher = DB::table('teacher')->where('userid', session('userid'))->first();
+            $schedule = DB::table('schedule')->where('scheduleid', $assignment->scheduleid)->first();
+             if (!$teacher || !$schedule || $schedule->teacherid != $teacher->teacherid) {
+                  return back()->with('error', 'Anda tidak berhak mengedit tugas ini');
+             }
+        }
+
         $assignment->update([
             'name' => $request->name,
             'description' => $request->description,
@@ -279,7 +424,20 @@ class AssignmentController extends Controller
 
     public function delete($id)
     {
-        Assignment::where('assignmentid', $id)->delete();
+        $assignment = Assignment::where('assignmentid', $id)->first();
+        if (!$assignment) {
+            return back()->with('error', 'Tugas tidak ditemukan');
+        }
+
+        if (session('level') == 2) {
+            $teacher = DB::table('teacher')->where('userid', session('userid'))->first();
+            $schedule = DB::table('schedule')->where('scheduleid', $assignment->scheduleid)->first();
+             if (!$teacher || !$schedule || $schedule->teacherid != $teacher->teacherid) {
+                  return back()->with('error', 'Anda tidak berhak menghapus tugas ini');
+             }
+        }
+
+        $assignment->delete();
         return back()->with('success', 'Assignment deleted');
     }
 }

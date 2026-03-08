@@ -11,10 +11,36 @@ Route::get('/logout', 'App\Http\Controllers\Ctrl@logout');
 
 Route::get('/home', 'App\Http\Controllers\Ctrl@home');
 
-Route::get('/course', 'App\Http\Controllers\Ctrl@course');
 Route::get('/profile', 'App\Http\Controllers\Ctrl@profile')->name('profile');
 Route::post('/profile/update', 'App\Http\Controllers\Ctrl@updateprofile')->name('profile.update');
 Route::post('/profile/password', 'App\Http\Controllers\Ctrl@updatepassword')->name('profile.password');
+
+Route::post('/profile/email', 'App\Http\Controllers\Ctrl@requestEmailChange')->name('profile.email');
+Route::get('/profile/email/verify/{token}', 'App\Http\Controllers\Ctrl@verifyEmailChange')->name('profile.email.verify');
+
+Route::post('/profile/phone', 'App\Http\Controllers\Ctrl@requestPhoneChange')->name('profile.phone');
+Route::get('/profile/phone/cancel', 'App\Http\Controllers\Ctrl@cancelPhoneChange')->name('profile.phone.cancel');
+Route::post('/profile/phone/verify', 'App\Http\Controllers\Ctrl@verifyPhoneChange')->name('profile.phone.verify');
+
+Route::get('/course', 'App\Http\Controllers\Ctrl@allcourse')->name('course.index');
+Route::post('/course/store', 'App\Http\Controllers\Ctrl@savecourse')->name('course.store');
+Route::post('/course/update', 'App\Http\Controllers\Ctrl@updatecourse')->name('course.update');
+Route::get('/course/delete/{id}', 'App\Http\Controllers\Ctrl@deletecourse')->name('course.delete');
+
+Route::get('/class', 'App\Http\Controllers\Ctrl@allclass')->name('class.index');
+Route::post('/class/store', 'App\Http\Controllers\Ctrl@saveclass')->name('class.store');
+Route::post('/class/update', 'App\Http\Controllers\Ctrl@updateclass')->name('class.update');
+Route::get('/class/delete/{id}', 'App\Http\Controllers\Ctrl@deleteclass')->name('class.delete');
+
+Route::get('/block', 'App\Http\Controllers\Ctrl@allblock')->name('block.index');
+Route::post('/block/store', 'App\Http\Controllers\Ctrl@saveblock')->name('block.store');
+Route::post('/block/update', 'App\Http\Controllers\Ctrl@updateblock')->name('block.update');
+Route::get('/block/delete/{id}', 'App\Http\Controllers\Ctrl@deleteblock')->name('block.delete');
+
+Route::get('/academicyear', 'App\Http\Controllers\Ctrl@allacademicyear')->name('academicyear.index');
+Route::post('/academicyear/store', 'App\Http\Controllers\Ctrl@saveacademicyear')->name('academicyear.store');
+Route::post('/academicyear/update', 'App\Http\Controllers\Ctrl@updateacademicyear')->name('academicyear.update');
+Route::get('/academicyear/delete/{id}', 'App\Http\Controllers\Ctrl@deleteacademicyear')->name('academicyear.delete');
 
 Route::get('/userdata', 'App\Http\Controllers\Ctrl@userdata');
 Route::post('/userdata/add', 'App\Http\Controllers\Ctrl@saveuser')->name('userdata.add');
@@ -25,6 +51,7 @@ Route::get('/setting', 'App\Http\Controllers\Ctrl@setting');
 Route::post('/setting/update', 'App\Http\Controllers\Ctrl@savesetting');
 
 Route::get('/database', 'App\Http\Controllers\Ctrl@databasePage');
+Route::get('/activity-log', 'App\Http\Controllers\Ctrl@activityLog')->name('activity.log');
 Route::get('/database/export', 'App\Http\Controllers\Ctrl@exportDatabase');
 Route::post('/database/import', 'App\Http\Controllers\Ctrl@importDatabase');
 
@@ -37,6 +64,7 @@ Route::post('/jadwal/update', 'App\Http\Controllers\JadwalController@updateSched
 
 // Assignment (Tugas)
 Route::get('/assignment', 'App\Http\Controllers\AssignmentController@index')->name('assignment.index');
+Route::get('/assignment/filter', 'App\Http\Controllers\AssignmentController@filter')->name('assignment.filter');
 Route::get('/assignment/create', 'App\Http\Controllers\AssignmentController@create')->name('assignment.create');
 Route::post('/assignment/store', 'App\Http\Controllers\AssignmentController@store')->name('assignment.store');
 Route::get('/assignment/show/{id}', 'App\Http\Controllers\AssignmentController@show')->name('assignment.show');

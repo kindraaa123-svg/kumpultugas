@@ -8,9 +8,9 @@
                 <div class="row">
                     <div class="col-md-12">
                         <div class="overview-wrap">
-                            <h2 class="title-1">Data Mata Pelajaran</h2>
-                            <button class="au-btn au-btn-icon au-btn--blue" data-bs-toggle="modal" data-bs-target="#modalAddCourse">
-                                <i class="zmdi zmdi-plus"></i>Tambah Mapel</button>
+                            <h2 class="title-1">Data Kelas</h2>
+                            <button class="au-btn au-btn-icon au-btn--blue" data-bs-toggle="modal" data-bs-target="#modalAddClass">
+                                <i class="zmdi zmdi-plus"></i>Tambah Kelas</button>
                         </div>
                     </div>
                 </div>
@@ -29,22 +29,21 @@
                                 <thead>
                                     <tr>
                                         <th>ID</th>
-                                        <th>Nama Mata Pelajaran</th>
+                                        <th>Nama Kelas</th>
                                         <th>Aksi</th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    @foreach($course as $c)
+                                    @foreach($class as $c)
                                     <tr>
-                                        <td>{{ $c->courseid }}</td>
-                                        <td>{{ $c->coursename }}</td>
+                                        <td>{{ $c->classid }}</td>
+                                        <td>{{ $c->classname }}</td>
                                         <td>
-                                            <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#modalEditCourse{{ $c->courseid }}">
+                                            <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#modalEditClass{{ $c->classid }}">
                                                 Detail
                                             </button>
                                         </td>
                                     </tr>
-
                                     @endforeach
                                 </tbody>
                             </table>
@@ -56,20 +55,20 @@
     </div>
 </div>
 
-<!-- Modal Add Course -->
-<div class="modal fade" id="modalAddCourse" tabindex="-1" aria-labelledby="modalAddCourseLabel" aria-hidden="true">
+<!-- Modal Add Class -->
+<div class="modal fade" id="modalAddClass" tabindex="-1" aria-labelledby="modalAddClassLabel" aria-hidden="true">
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title" id="modalAddCourseLabel">Tambah Mata Pelajaran</h5>
+                <h5 class="modal-title" id="modalAddClassLabel">Tambah Kelas</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
-            <form action="{{ route('course.store') }}" method="POST">
+            <form action="{{ route('class.store') }}" method="POST">
                 @csrf
                 <div class="modal-body">
                     <div class="form-group">
-                        <label for="coursename" class="control-label mb-1">Nama Mata Pelajaran</label>
-                        <input id="coursename" name="coursename" type="text" class="form-control" required>
+                        <label for="classname" class="control-label mb-1">Nama Kelas</label>
+                        <input id="classname" name="classname" type="text" class="form-control" required>
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -81,26 +80,26 @@
     </div>
 </div>
 
-<!-- Modal Edit Course Loop -->
-@foreach($course as $c)
-<div class="modal fade" id="modalEditCourse{{ $c->courseid }}" tabindex="-1" aria-labelledby="modalEditCourseLabel{{ $c->courseid }}" aria-hidden="true">
+<!-- Modal Edit Class Loop -->
+@foreach($class as $c)
+<div class="modal fade" id="modalEditClass{{ $c->classid }}" tabindex="-1" aria-labelledby="modalEditClassLabel{{ $c->classid }}" aria-hidden="true">
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title" id="modalEditCourseLabel{{ $c->courseid }}">Edit Mata Pelajaran</h5>
+                <h5 class="modal-title" id="modalEditClassLabel{{ $c->classid }}">Edit Kelas</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
-            <form action="{{ route('course.update') }}" method="POST">
+            <form action="{{ route('class.update') }}" method="POST">
                 @csrf
-                <input type="hidden" name="courseid" value="{{ $c->courseid }}">
+                <input type="hidden" name="classid" value="{{ $c->classid }}">
                 <div class="modal-body">
                     <div class="form-group">
-                        <label for="coursename{{ $c->courseid }}" class="control-label mb-1">Nama Mata Pelajaran</label>
-                        <input id="coursename{{ $c->courseid }}" name="coursename" type="text" class="form-control" value="{{ $c->coursename }}" required>
+                        <label for="classname{{ $c->classid }}" class="control-label mb-1">Nama Kelas</label>
+                        <input id="classname{{ $c->classid }}" name="classname" type="text" class="form-control" value="{{ $c->classname }}" required>
                     </div>
                 </div>
                 <div class="modal-footer">
-                    <a href="{{ route('course.delete', $c->courseid) }}" class="btn btn-danger" onclick="return confirm('Apakah Anda yakin ingin menghapus data ini?')">Hapus</a>
+                    <a href="{{ route('class.delete', $c->classid) }}" class="btn btn-danger" onclick="return confirm('Apakah Anda yakin ingin menghapus data ini?')">Hapus</a>
                     <button type="submit" class="btn btn-primary">Update</button>
                 </div>
             </form>

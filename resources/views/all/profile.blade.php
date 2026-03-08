@@ -27,11 +27,13 @@
                                     </div>
                                     <div class="mb-3">
                                         <label class="form-label">Email</label>
-                                        <input type="email" name="email" class="form-control" value="{{ $data ? $data->email : '' }}" required>
+                                        <input type="email" name="email" class="form-control" value="{{ $data ? $data->email : '' }}" readonly>
+                                        <small class="text-muted">Gunakan form di sebelah kanan untuk mengubah email.</small>
                                     </div>
                                     <div class="mb-3">
                                         <label class="form-label">Nomor Telepon</label>
-                                        <input type="text" name="phonenumber" class="form-control" value="{{ $data ? $data->phonenumber : '' }}" required>
+                                        <input type="text" name="phonenumber" class="form-control" value="{{ $data ? $data->phonenumber : '' }}" readonly>
+                                        <small class="text-muted">Gunakan form di sebelah kanan untuk mengubah nomor telepon.</small>
                                     </div>
                                     <div class="text-end">
                                         <button type="submit" class="btn btn-primary">Simpan</button>
@@ -58,6 +60,61 @@
                                     </div>
                                     <div class="text-end">
                                         <button type="submit" class="btn btn-primary">Ubah Password</button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                        
+                        <div class="card mt-4">
+                            <div class="card-header">
+                                <h4 class="mb-0">Ganti Email</h4>
+                            </div>
+                            <div class="card-body">
+                                <form action="{{ route('profile.email') }}" method="POST">
+                                    @csrf
+                                    <div class="mb-3">
+                                        <label class="form-label">Email Baru</label>
+                                        <input type="email" name="new_email" class="form-control" required>
+                                    </div>
+                                    <div class="text-end">
+                                        <button type="submit" class="btn btn-primary">Kirim Link Verifikasi</button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+
+                        <div class="card mt-4">
+                            <div class="card-header">
+                                <h4 class="mb-0">Ganti Nomor Telepon</h4>
+                            </div>
+                            <div class="card-body">
+                                <form action="{{ route('profile.phone') }}" method="POST">
+                                    @csrf
+                                    <div class="mb-3">
+                                        <label class="form-label">Nomor Telepon Baru</label>
+                                        <input type="text" name="new_phone" class="form-control" value="{{ ($user && $user->pending_phone) ? $user->pending_phone : '' }}" {{ ($user && $user->pending_phone) ? 'disabled' : 'required' }}>
+                                        @if($user && $user->pending_phone)
+                                            <input type="hidden" name="new_phone" value="{{ $user->pending_phone }}">
+                                        @endif
+                                    </div>
+                                    <div class="text-end">
+                                        @if($user && $user->pending_phone)
+                                            <a href="{{ route('profile.phone.cancel') }}" class="btn btn-secondary me-2">Ganti Nomor</a>
+                                            <button type="submit" class="btn btn-primary">Kirim Ulang OTP</button>
+                                        @else
+                                            <button type="submit" class="btn btn-primary">Kirim OTP</button>
+                                        @endif
+                                    </div>
+                                </form>
+                                <hr>
+                                <form action="{{ route('profile.phone.verify') }}" method="POST">
+                                    @csrf
+                                    <div class="mb-3">
+                                        <label class="form-label">Kode OTP</label>
+                                        <input type="text" name="otp" class="form-control" placeholder="Masukkan OTP" required>
+                                    </div>
+                                    <div class="text-end">
+                                        <button type="submit" class="btn btn-primary">Verifikasi OTP</button>
                                     </div>
                                 </form>
                             </div>

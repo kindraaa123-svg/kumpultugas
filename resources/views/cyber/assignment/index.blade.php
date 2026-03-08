@@ -26,38 +26,71 @@
                 @endif
                 
                 <div class="row m-t-25">
-                    @foreach($assignments as $assignment)
-                    <div class="col-md-4">
-                        <div class="card" style="border-radius: 8px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.1); transition: transform 0.2s;">
-                            <div style="background: linear-gradient(135deg, #4285f4, #34a853); padding: 20px; color: white;">
-                                <h4 style="color: white; margin-bottom: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ $assignment->name }}</h4>
-                                <p style="color: rgba(255,255,255,0.8); margin: 0;">{{ $assignment->schedule->course->coursename }}</p>
-                                <small style="color: rgba(255,255,255,0.7);">{{ $assignment->schedule->classroom->classname }}</small>
-                            </div>
+                    <div class="col-md-12">
+                        <div class="card">
                             <div class="card-body">
-                                <p class="card-text text-muted" style="height: 45px; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;">
-                                    {{ $assignment->description ?: 'Tidak ada deskripsi' }}
-                                </p>
-                                <hr>
-                                <div class="d-flex justify-content-between align-items-center">
-                                    <small class="text-muted"><i class="far fa-calendar-alt"></i> Deadline: {{ date('d M, H:i', strtotime($assignment->time_end)) }}</small>
+                                <div class="row">
+                                    <div class="col-md-4">
+                                        <label for="filterCourse" class="form-label">Filter Mata Pelajaran</label>
+                                        <select id="filterCourse" class="form-control">
+                                            <option value="all">Semua Mata Pelajaran</option>
+                                            @foreach($courses as $course)
+                                                <option value="{{ $course->courseid }}">{{ $course->coursename }}</option>
+                                            @endforeach
+                                        </select>
+                                    </div>
+                                    @if(session('level') == 3)
+                                    <div class="col-md-4">
+                                        <label for="filterStatus" class="form-label">Filter Status</label>
+                                        <select id="filterStatus" class="form-control">
+                                            <option value="all">Semua Status</option>
+                                            <option value="completed">Sudah Dikerjakan</option>
+                                            <option value="pending">Belum Dikerjakan</option>
+                                        </select>
+                                    </div>
+                                    @endif
                                 </div>
-                            </div>
-                            <div class="card-footer bg-white border-top-0 d-flex justify-content-between">
-                                <a href="{{ route('assignment.show', $assignment->assignmentid) }}" class="btn btn-outline-primary btn-sm">Buka Tugas</a>
-                                @if(session('level') != 3)
-                                <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-toggle="modal" data-bs-target="#editAssignment{{ $assignment->assignmentid }}">Detail</button>
-                                @endif
                             </div>
                         </div>
                     </div>
-                    
+                </div>
+
+                <div class="row m-t-25" id="assignmentList">
+                    @foreach($assignments as $assignment)
+                        @include('cyber.assignment.card', ['assignment' => $assignment, 'submittedIds' => $submittedIds ?? []])
                     @endforeach
                 </div>
             </div>
         </div>
     </div>
 </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const filterCourse = document.getElementById('filterCourse');
+    const filterStatus = document.getElementById('filterStatus');
+
+    function filterAssignments() {
+        const courseId = filterCourse.value;
+        const status = filterStatus ? filterStatus.value : 'all';
+
+        fetch(`{{ route('assignment.filter') }}?course_id=${courseId}&status=${status}`)
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById('assignmentList').innerHTML = data.html;
+            })
+            .catch(error => console.error('Error:', error));
+    }
+
+    if(filterCourse) {
+        filterCourse.addEventListener('change', filterAssignments);
+    }
+    
+    if(filterStatus) {
+        filterStatus.addEventListener('change', filterAssignments);
+    }
+});
+</script>
 
 @if(session('level') != 3)
 @foreach($assignments as $assignment)
