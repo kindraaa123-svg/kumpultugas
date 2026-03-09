@@ -20,6 +20,7 @@
                                                 <th>Phonenumber</th>
                                                 <th>Level</th>
                                                 <th>Role</th>
+                                                <th>Class</th>
                                                 <th>Aksi</th>
                                             </tr>
                                         </thead>
@@ -32,6 +33,7 @@
                                                 <td><?= $key->phonenumber ?></td>
                                                 <td><?= $key->levelname ?></td>
                                                 <td><?= $key->rolename ?></td>
+                                                <td><?= $key->classname ?></td>
                                                 <td><button class="btn btn-secondary mb-1" data-bs-toggle="modal" data-bs-target="#moreModal<?= $key->userid ?>">Detail</button></td>
                                             </tr>
                                         <?php } ?>

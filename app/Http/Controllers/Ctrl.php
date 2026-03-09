@@ -702,6 +702,7 @@ class Ctrl extends Controller
             ->leftjoin('employer','employer.userid','=','user.userid')
             ->leftjoin('teacher','teacher.userid','=','user.userid')
             ->leftjoin('student','student.userid','=','user.userid')
+            ->leftjoin('class', 'class.classid', '=', 'student.classid')
             ->leftJoin('role', function($join) {
                 $join->on('role.roleid', '=', 'employer.roleid')
                 ->orOn('role.roleid', '=', 'teacher.roleid');
@@ -711,6 +712,7 @@ class Ctrl extends Controller
                 'user.username',
                 'level.levelname',
                 'role.rolename',
+                'class.classname',
 
                 DB::raw('COALESCE(teacher.email, employer.email,student.email) as email'),
                 DB::raw('COALESCE(teacher.phonenumber, employer.phonenumber,student.phonenumber) as phonenumber'),

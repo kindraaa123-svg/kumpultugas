@@ -16,8 +16,19 @@
                             </div>
                         </div>
                         <div class="row m-t-25">
+                            @php
+                                $cardCount = 1; // Card 2 (Total Tugas / Assignment) is always visible
+                                if(isset($user) && $user->levelid == 1) $cardCount++; // Card 1
+                                if(isset($user) && $user->levelid != 1) $cardCount++; // Card 3
+                                
+                                $colClass = 'col-md-6'; // Default fallback
+                                if ($cardCount == 1) $colClass = 'col-md-12';
+                                if ($cardCount == 2) $colClass = 'col-md-6';
+                                if ($cardCount == 3) $colClass = 'col-md-4';
+                            @endphp
+
                             @if(isset($user) && $user->levelid == 1)
-                            <div class="col-sm-6 col-lg-3">
+                            <div class="{{ $colClass }}">
                                 <div class="overview-item overview-item--c1">
                                     <div class="overview__inner">
                                         <div class="overview-box clearfix">
@@ -34,7 +45,7 @@
                             </div>
                             @endif
 
-                            <div class="col-sm-6 col-lg-3">
+                            <div class="{{ $colClass }}">
                                 <div class="overview-item overview-item--c2">
                                     <div class="overview__inner">
                                         <div class="overview-box clearfix">
@@ -51,7 +62,7 @@
                             </div>
 
                             @if(isset($user) && $user->levelid != 1)
-                            <div class="col-sm-6 col-lg-3">
+                            <div class="{{ $colClass }}">
                                 <div class="overview-item overview-item--c3">
                                     <div class="overview__inner">
                                         <div class="overview-box clearfix">
