@@ -7,10 +7,20 @@ use App\Models\AcademicYear;
 use App\Models\Assignment;
 use App\Models\Block;
 use Illuminate\Http\Request;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 
 class AssignmentController extends Controller
 {
+    private function paginateCollection($items, int $perPage, int $page, array $options = []): LengthAwarePaginator
+    {
+        $collection = collect($items)->values();
+        $total = $collection->count();
+        $results = $collection->slice(($page - 1) * $perPage, $perPage)->values();
+
+        return new LengthAwarePaginator($results, $total, $perPage, $page, $options);
+    }
+
     private function canManageAssignments(): bool
     {
         if (session('level') != 2) {
@@ -90,7 +100,8 @@ class AssignmentController extends Controller
                     $assignments = Assignment::with('schedule.course', 'schedule.classroom')
                         ->where('scheduleid', $selectedRoom->scheduleid)
                         ->orderBy('time_end', 'desc')
-                        ->get();
+                        ->paginate(9)
+                        ->appends(request()->query());
 
                     $submittedIds = DB::table('quest')
                         ->where('studentid', $student->studentid)
@@ -127,7 +138,8 @@ class AssignmentController extends Controller
                     $assignments = Assignment::with('schedule.course', 'schedule.classroom')
                         ->where('scheduleid', $selectedRoom->scheduleid)
                         ->orderBy('time_end', 'desc')
-                        ->get();
+                        ->paginate(9)
+                        ->appends(request()->query());
                 }
             }
         }
@@ -192,7 +204,9 @@ class AssignmentController extends Controller
                 $roomsQuery->whereRaw('1=0');
             }
 
-            $rooms = $roomsQuery->get();
+            $rooms = $roomsQuery
+                ->paginate(9)
+                ->appends(request()->query());
         }
 
         $academicYears = AcademicYear::orderBy('name', 'desc')->get();
@@ -267,12 +281,14 @@ class AssignmentController extends Controller
             $roomsQuery->where('schedule.block_id', $blockId);
         }
 
-        $rooms = $roomsQuery->get();
+        $rooms = $roomsQuery
+            ->paginate(9)
+            ->appends([
+                'academic_year_id' => $academicYearId,
+                'block_id' => $blockId,
+            ]);
 
-        $html = '';
-        foreach ($rooms as $room) {
-            $html .= view('cyber.assignment.room_card', ['room' => $room])->render();
-        }
+        $html = view('cyber.assignment.room_list', compact('rooms'))->render();
 
         $blocks = collect();
         if ($academicYearId && $academicYearId !== 'all') {
@@ -536,7 +552,7 @@ class AssignmentController extends Controller
             $query->where('scheduleid', $scheduleId);
         }
 
-        $assignments = $query->get();
+        $assignments = $query->orderBy('time_end', 'desc')->get();
 
         // Filter status manually since it involves a relationship check (quest table)
         if ($status && $status != 'all' && session('level') == 3 && $student) {
@@ -559,14 +575,16 @@ class AssignmentController extends Controller
             });
         }
 
-        // Return partial view or JSON data
-        // For simplicity, let's return the HTML of the cards directly
-        // We need to loop through assignments and generate HTML string
+        $page = max((int) $request->query('page', 1), 1);
+        $paginator = $this->paginateCollection($assignments, 9, $page, [
+            'path' => route('assignment.filter'),
+            'query' => [
+                'scheduleid' => $scheduleId,
+                'status' => $status,
+            ],
+        ]);
 
-        $html = '';
-        foreach ($assignments as $assignment) {
-            $html .= view('cyber.assignment.card', compact('assignment', 'submittedIds'))->render();
-        }
+        $html = view('cyber.assignment.assignment_list', ['assignments' => $paginator, 'submittedIds' => $submittedIds])->render();
 
         return response()->json(['html' => $html]);
     }

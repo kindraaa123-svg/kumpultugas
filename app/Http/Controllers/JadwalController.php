@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Helpers\ActivityLogger;
 use App\Models\AcademicYear;
 use App\Models\Block;
 use App\Models\Classroom;
@@ -14,6 +15,34 @@ use Illuminate\Support\Facades\DB;
 
 class JadwalController extends Controller
 {
+    private function normalizedRole(): string
+    {
+        return strtolower(trim((string) session('role')));
+    }
+
+    private function canManageSchedule(): bool
+    {
+        if ((int) session('level') === 1) {
+            return true;
+        }
+
+        if ((int) session('level') !== 2) {
+            return false;
+        }
+
+        $role = $this->normalizedRole();
+        if (in_array($role, ['kurikulum', 'curiculum'], true)) {
+            return true;
+        }
+        if ($role === 'guru') {
+            return false;
+        }
+
+        $teacher = DB::table('teacher')->where('userid', session('userid'))->first();
+
+        return $teacher && in_array((int) $teacher->roleid, [4, 5], true);
+    }
+
     public function index()
     {
         $system = DB::table('system')->first();
@@ -76,6 +105,10 @@ class JadwalController extends Controller
 
     public function setting()
     {
+        if (! $this->canManageSchedule()) {
+            return redirect()->route('jadwal.index')->with('error', 'Guru hanya bisa melihat jadwal');
+        }
+
         $system = DB::table('system')->first();
         $years = AcademicYear::all();
         $blocks = Block::all();
@@ -89,6 +122,10 @@ class JadwalController extends Controller
 
     public function updateSetting(Request $request)
     {
+        if (! $this->canManageSchedule()) {
+            return redirect()->route('jadwal.index')->with('error', 'Guru tidak memiliki akses mengubah jadwal');
+        }
+
         $request->validate([
             'academic_year_id' => 'required',
             'block_id' => 'required',
@@ -102,11 +139,17 @@ class JadwalController extends Controller
         AcademicYear::where('academic_year_id', $request->academic_year_id)->update(['is_active' => 1]);
         Block::where('block_id', $request->block_id)->update(['is_active' => 1]);
 
+        ActivityLogger::log("Mengubah setting jadwal: tahun ajaran #{$request->academic_year_id}, blok #{$request->block_id}", $request->ip());
+
         return redirect()->route('jadwal.index')->with('success', 'Settings updated');
     }
 
     public function editSchedule($classid, $session)
     {
+        if (! $this->canManageSchedule()) {
+            return redirect()->route('jadwal.index')->with('error', 'Guru hanya bisa melihat jadwal');
+        }
+
         $system = DB::table('system')->first();
         $activeYear = AcademicYear::where('is_active', 1)->first();
         $today = date('Y-m-d');
@@ -137,6 +180,10 @@ class JadwalController extends Controller
 
     public function updateSchedule(Request $request)
     {
+        if (! $this->canManageSchedule()) {
+            return redirect()->route('jadwal.index')->with('error', 'Guru tidak memiliki akses mengubah jadwal');
+        }
+
         $request->validate([
             'academic_year_id' => 'required',
             'block_id' => 'required',
@@ -155,6 +202,7 @@ class JadwalController extends Controller
             ->first();
 
         if ($existing) {
+            $before = DB::table('schedule')->where('scheduleid', $existing->scheduleid)->first();
             DB::table('schedule')
                 ->where('scheduleid', $existing->scheduleid)
                 ->update([
@@ -162,6 +210,10 @@ class JadwalController extends Controller
                     'teacherid' => $request->teacherid,
                     'updated_at' => now(),
                 ]);
+            ActivityLogger::log(
+                "Mengubah data jadwal #{$existing->scheduleid} dari course #{$before->courseid} menjadi #{$request->courseid}, teacher #{$before->teacherid} menjadi #{$request->teacherid}",
+                $request->ip()
+            );
         } else {
             DB::table('schedule')->insert([
                 'academic_year_id' => $request->academic_year_id,
@@ -173,6 +225,11 @@ class JadwalController extends Controller
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
+            $newId = DB::getPdo()->lastInsertId();
+            ActivityLogger::log(
+                "Menambahkan data jadwal #{$newId} untuk kelas #{$request->classid} sesi {$request->session}",
+                $request->ip()
+            );
         }
 
         return redirect()->route('jadwal.index')->with('success', 'Schedule updated');

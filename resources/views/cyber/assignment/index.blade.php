@@ -86,10 +86,8 @@
                         </div>
                     </div>
 
-                    <div class="m-t-25" id="roomCardList">
-                        @foreach($rooms as $room)
-                            @include('cyber.assignment.room_card', ['room' => $room])
-                        @endforeach
+                    <div class="row m-t-25" id="roomCardList">
+                        @include('cyber.assignment.room_list', ['rooms' => $rooms])
                     </div>
                 @else
                     <div class="row m-t-25">
@@ -120,9 +118,7 @@
                     </div>
 
                     <div class="row m-t-25" id="assignmentList">
-                        @foreach($assignments as $assignment)
-                            @include('cyber.assignment.card', ['assignment' => $assignment, 'submittedIds' => $submittedIds ?? []])
-                        @endforeach
+                        @include('cyber.assignment.assignment_list', ['assignments' => $assignments, 'submittedIds' => $submittedIds ?? []])
                     </div>
                 @endif
             </div>
@@ -136,9 +132,10 @@ document.addEventListener('DOMContentLoaded', function() {
     const filterBlock = document.getElementById('filterBlock');
     const filterStatus = document.getElementById('filterStatus');
 
-    function filterRooms() {
+    function filterRooms(page) {
         if (!filterBlock || !filterYear) return;
-        fetch(`{{ route('assignment.courses.filter') }}?academic_year_id=${filterYear.value}&block_id=${filterBlock.value}`)
+        const currentPage = page || 1;
+        fetch(`{{ route('assignment.courses.filter') }}?academic_year_id=${filterYear.value}&block_id=${filterBlock.value}&page=${currentPage}`)
             .then(response => response.json())
             .then(data => {
                 const list = document.getElementById('roomCardList');
@@ -157,11 +154,12 @@ document.addEventListener('DOMContentLoaded', function() {
             .catch(error => console.error('Error:', error));
     }
 
-    function filterAssignments() {
+    function filterAssignments(page) {
         const scheduleid = '{{ $selectedScheduleId ?? '' }}';
         const status = filterStatus ? filterStatus.value : 'all';
+        const currentPage = page || 1;
 
-        fetch(`{{ route('assignment.filter') }}?scheduleid=${scheduleid}&status=${status}`)
+        fetch(`{{ route('assignment.filter') }}?scheduleid=${scheduleid}&status=${status}&page=${currentPage}`)
             .then(response => response.json())
             .then(data => {
                 document.getElementById('assignmentList').innerHTML = data.html;
@@ -181,6 +179,30 @@ document.addEventListener('DOMContentLoaded', function() {
         filterYear.addEventListener('change', function() {
             if (filterBlock) filterBlock.value = 'all';
             filterRooms();
+        });
+    }
+
+    const roomList = document.getElementById('roomCardList');
+    if (roomList) {
+        roomList.addEventListener('click', function (event) {
+            const link = event.target.closest('.pagination a');
+            if (!link) return;
+            event.preventDefault();
+            const url = new URL(link.href, window.location.origin);
+            const page = url.searchParams.get('page') || 1;
+            filterRooms(page);
+        });
+    }
+
+    const assignmentList = document.getElementById('assignmentList');
+    if (assignmentList) {
+        assignmentList.addEventListener('click', function (event) {
+            const link = event.target.closest('.pagination a');
+            if (!link) return;
+            event.preventDefault();
+            const url = new URL(link.href, window.location.origin);
+            const page = url.searchParams.get('page') || 1;
+            filterAssignments(page);
         });
     }
 });

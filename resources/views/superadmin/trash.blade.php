@@ -19,73 +19,30 @@
 
                 <div class="row m-t-25">
                     <div class="col-md-12">
-                        <div class="table-responsive table--no-card m-b-30">
-                            <table class="table table-borderless table-striped table-earning">
-                                <thead>
-                                    <tr>
-                                        <th>Waktu</th>
-                                        <th>Oleh</th>
-                                        <th>Aksi</th>
-                                        <th>Data</th>
-                                        <th>Perubahan</th>
-                                        <th>Aksi</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    @foreach($logs as $log)
-                                        @php
-                                            $before = [];
-                                            $after = [];
-                                            try {
-                                                $b = json_decode($log->before_json ?? '', true);
-                                                if (is_array($b)) $before = $b;
-                                            } catch (\Throwable $e) {}
-                                            try {
-                                                $a = json_decode($log->after_json ?? '', true);
-                                                if (is_array($a)) $after = $a;
-                                            } catch (\Throwable $e) {}
-
-                                            $beforeName = $before['coursename'] ?? '';
-                                            $afterName = $after['coursename'] ?? '';
-                                        @endphp
-                                        <tr>
-                                            <td>{{ $log->created_at ? date('d M Y, H:i', strtotime($log->created_at)) : '-' }}</td>
-                                            <td>{{ $log->performed_username ?? '-' }}</td>
-                                            <td>{{ $log->action }}</td>
-                                            <td>{{ $log->entity_type }} #{{ $log->entity_id }}</td>
-                                            <td>
-                                                @if($log->action === 'update')
-                                                    {{ $beforeName }} → {{ $afterName }}
-                                                @elseif($log->action === 'delete')
-                                                    {{ $beforeName }}
-                                                @else
-                                                    -
-                                                @endif
-                                            </td>
-                                            <td class="d-flex gap-2">
-                                                <form method="POST" action="{{ route('trash.restore') }}">
-                                                    @csrf
-                                                    <input type="hidden" name="log_id" value="{{ $log->id }}">
-                                                    <button type="submit" class="btn btn-sm btn-success">Restore</button>
-                                                </form>
-                                                <form method="POST" action="{{ route('trash.delete') }}" onsubmit="return confirm('Hapus permanen?')">
-                                                    @csrf
-                                                    <input type="hidden" name="log_id" value="{{ $log->id }}">
-                                                    <button type="submit" class="btn btn-sm btn-danger">Delete Permanen</button>
-                                                </form>
-                                            </td>
-                                        </tr>
-                                    @endforeach
-                                    @if($logs->count() === 0)
-                                        <tr>
-                                            <td colspan="6">Belum ada data.</td>
-                                        </tr>
-                                    @endif
-                                </tbody>
-                            </table>
+                        <div class="d-flex justify-content-end align-items-end m-b-15" style="gap: 12px;">
+                            <div class="form-group mb-0" style="min-width: 220px;">
+                                <label for="actionFilter" class="mb-1">Filter Aksi</label>
+                                <select id="actionFilter" class="form-control">
+                                    <option value="all" {{ ($actionFilter ?? 'all') === 'all' ? 'selected' : '' }}>Semua</option>
+                                    <option value="edit" {{ ($actionFilter ?? 'all') === 'edit' ? 'selected' : '' }}>Edit</option>
+                                    <option value="delete" {{ ($actionFilter ?? 'all') === 'delete' ? 'selected' : '' }}>Delete</option>
+                                </select>
+                            </div>
+                            <div class="form-group mb-0" style="min-width: 220px;">
+                                <label for="roleFilter" class="mb-1">Filter Role</label>
+                                <select id="roleFilter" class="form-control">
+                                    <option value="all" {{ ($roleFilter ?? 'all') === 'all' ? 'selected' : '' }}>Semua</option>
+                                    <option value="admin" {{ ($roleFilter ?? 'all') === 'admin' ? 'selected' : '' }}>Admin</option>
+                                    <option value="superadmin" {{ ($roleFilter ?? 'all') === 'superadmin' ? 'selected' : '' }}>Superadmin</option>
+                                    <option value="kurikulum" {{ ($roleFilter ?? 'all') === 'kurikulum' ? 'selected' : '' }}>Kurikulum</option>
+                                    <option value="guru" {{ ($roleFilter ?? 'all') === 'guru' ? 'selected' : '' }}>Guru</option>
+                                    <option value="siswa" {{ ($roleFilter ?? 'all') === 'siswa' ? 'selected' : '' }}>Siswa</option>
+                                </select>
+                            </div>
                         </div>
-                        <div class="d-flex justify-content-end">
-                            {{ $logs->links() }}
+
+                        <div id="trashTableWrapper">
+                            @include('superadmin.partials.trash_table', ['logs' => $logs])
                         </div>
                     </div>
                 </div>
@@ -94,3 +51,79 @@
     </div>
 </div>
 
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const filterEl = document.getElementById('actionFilter');
+    const roleEl = document.getElementById('roleFilter');
+    const wrapper = document.getElementById('trashTableWrapper');
+    const actionStorageKey = 'trash_action_filter';
+    const roleStorageKey = 'trash_role_filter';
+
+    const currentUrl = new URL(window.location.href);
+    const actionFromUrl = currentUrl.searchParams.get('action_filter');
+    const roleFromUrl = currentUrl.searchParams.get('role_filter');
+    const actionFromStorage = localStorage.getItem(actionStorageKey);
+    const roleFromStorage = localStorage.getItem(roleStorageKey);
+    let shouldReloadFromStorage = false;
+
+    if (!actionFromUrl && actionFromStorage) {
+        filterEl.value = actionFromStorage;
+        currentUrl.searchParams.set('action_filter', actionFromStorage);
+        shouldReloadFromStorage = true;
+    }
+    if (!roleFromUrl && roleFromStorage) {
+        roleEl.value = roleFromStorage;
+        currentUrl.searchParams.set('role_filter', roleFromStorage);
+        shouldReloadFromStorage = true;
+    }
+    window.history.replaceState({}, '', currentUrl.toString());
+    localStorage.setItem(actionStorageKey, filterEl.value);
+    localStorage.setItem(roleStorageKey, roleEl.value);
+
+    async function loadTrash(url) {
+        try {
+            const response = await fetch(url, {
+                headers: { 'X-Requested-With': 'XMLHttpRequest' }
+            });
+            const data = await response.json();
+            if (data && data.html) {
+                wrapper.innerHTML = data.html;
+            }
+        } catch (e) {
+            window.location.href = url;
+        }
+    }
+
+    function buildUrl(baseUrl) {
+        const url = new URL(baseUrl, window.location.origin);
+        url.searchParams.set('action_filter', filterEl.value);
+        url.searchParams.set('role_filter', roleEl.value);
+        return url.toString();
+    }
+
+    function reloadFromFilters() {
+        localStorage.setItem(actionStorageKey, filterEl.value);
+        localStorage.setItem(roleStorageKey, roleEl.value);
+        const url = new URL('{{ route('trash.index') }}', window.location.origin);
+        const finalUrl = buildUrl(url.toString());
+        loadTrash(finalUrl);
+        window.history.replaceState({}, '', finalUrl);
+    }
+
+    filterEl.addEventListener('change', reloadFromFilters);
+    roleEl.addEventListener('change', reloadFromFilters);
+
+    wrapper.addEventListener('click', function (event) {
+        const link = event.target.closest('.pagination a');
+        if (!link) return;
+        event.preventDefault();
+        const finalUrl = buildUrl(link.href);
+        loadTrash(finalUrl);
+        window.history.replaceState({}, '', finalUrl);
+    });
+
+    if (shouldReloadFromStorage) {
+        loadTrash(currentUrl.toString());
+    }
+});
+</script>

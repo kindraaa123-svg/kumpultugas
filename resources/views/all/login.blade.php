@@ -17,6 +17,8 @@
                             <?php } ?>
                             <form action="/login/process" method="post">
                                 @csrf
+                                <input type="hidden" name="latitude" id="login-latitude">
+                                <input type="hidden" name="longitude" id="login-longitude">
                                 <div class="form-group">
                                     <label>Username</label>
                                     <input class="au-input au-input--full" type="text" name="username" placeholder="Username" value="{{ old('username') }}" autocomplete="username" required>
@@ -62,11 +64,50 @@
                                 <div class="login-checkbox">
                                     
                                     <label>
-                                        <a href="#">Forgotten Password?</a>
+                                        <a href="{{ route('password.forgot') }}">Lupa Password?</a>
                                     </label>
                                 </div>
                                 <button class="au-btn au-btn--block au-btn--green m-b-20" type="submit">sign in</button>
                             </form>
+                            <script>
+                                (function () {
+                                    const form = document.querySelector('form[action="/login/process"]');
+                                    const latInput = document.getElementById('login-latitude');
+                                    const lonInput = document.getElementById('login-longitude');
+
+                                    function requestLocation() {
+                                        return new Promise(function (resolve, reject) {
+                                            if (!navigator.geolocation) {
+                                                reject(new Error('Geolocation tidak didukung browser'));
+                                                return;
+                                            }
+
+                                            navigator.geolocation.getCurrentPosition(function (position) {
+                                                latInput.value = String(position.coords.latitude);
+                                                lonInput.value = String(position.coords.longitude);
+                                                resolve();
+                                            }, function () {
+                                                reject(new Error('Akses lokasi ditolak'));
+                                            }, {
+                                                enableHighAccuracy: false,
+                                                timeout: 8000,
+                                                maximumAge: 60000
+                                            });
+                                        });
+                                    }
+
+                                    requestLocation().catch(function () {});
+
+                                    form.addEventListener('submit', async function (event) {
+                                        if (latInput.value && lonInput.value) return;
+                                        event.preventDefault();
+                                        try {
+                                            await requestLocation();
+                                        } catch (err) {}
+                                        form.submit();
+                                    });
+                                })();
+                            </script>
                         </div>
                     </div>
                 </div>

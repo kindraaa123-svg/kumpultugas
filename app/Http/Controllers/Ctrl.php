@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Session;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
@@ -43,6 +44,189 @@ class Ctrl extends Controller
     private function clearLoginFail(string $key): void
     {
         Cache::forget($key);
+    }
+
+    private function normalizeRoleLabel(?string $role): ?string
+    {
+        $value = mb_strtolower(trim((string) $role));
+        if ($value === '') {
+            return null;
+        }
+        $map = [
+            'superadmin' => 'Superadmin',
+            'admin' => 'Admin',
+            'kurikulum' => 'Kurikulum',
+            'curiculum' => 'Kurikulum',
+            'guru' => 'Guru',
+            'siswa' => 'Siswa',
+        ];
+
+        if (isset($map[$value])) {
+            return $map[$value];
+        }
+
+        return ucfirst($value);
+    }
+
+    private function resolveClientIp(Request $request): string
+    {
+        $candidates = [
+            $request->header('CF-Connecting-IP'),
+            $request->header('X-Real-IP'),
+            $request->header('X-Forwarded-For'),
+            $request->server('REMOTE_ADDR'),
+            $request->ip(),
+        ];
+
+        foreach ($candidates as $candidate) {
+            if (empty($candidate)) {
+                continue;
+            }
+
+            $ip = trim(explode(',', (string) $candidate)[0]);
+            if (filter_var($ip, FILTER_VALIDATE_IP)) {
+                return $ip;
+            }
+        }
+
+        return 'UNKNOWN';
+    }
+
+    private function resolveRoleByUserId(int $userid): ?string
+    {
+        $user = DB::table('user')->where('userid', $userid)->first();
+        if (! $user) {
+            return null;
+        }
+
+        if ((int) $user->levelid === 3) {
+            return 'Siswa';
+        }
+
+        if ((int) $user->levelid === 1) {
+            $employer = DB::table('employer')
+                ->leftJoin('role', 'role.roleid', '=', 'employer.roleid')
+                ->where('employer.userid', $userid)
+                ->select('role.rolename')
+                ->first();
+
+            return $this->normalizeRoleLabel($employer->rolename ?? null);
+        }
+
+        if ((int) $user->levelid === 2) {
+            $teacher = DB::table('teacher')
+                ->leftJoin('role', 'role.roleid', '=', 'teacher.roleid')
+                ->where('teacher.userid', $userid)
+                ->select('role.rolename')
+                ->first();
+
+            return $this->normalizeRoleLabel($teacher->rolename ?? null);
+        }
+
+        return null;
+    }
+
+    private function insertTrashLog(Request $request, string $entityType, int $entityId, string $action, ?array $before, ?array $after): void
+    {
+        $userid = session('userid') ? (int) session('userid') : null;
+        $username = session('username');
+        if (empty($username) && $userid) {
+            $user = DB::table('user')->where('userid', $userid)->select('username')->first();
+            $username = $user->username ?? null;
+        }
+
+        $role = $this->normalizeRoleLabel((string) session('role'));
+        if (empty($role) && $userid) {
+            $role = $this->resolveRoleByUserId($userid);
+        }
+
+        $data = [
+            'entity_type' => $entityType,
+            'entity_id' => $entityId,
+            'action' => $action,
+            'before_json' => $before !== null ? json_encode($before, JSON_UNESCAPED_UNICODE) : null,
+            'after_json' => $after !== null ? json_encode($after, JSON_UNESCAPED_UNICODE) : null,
+            'performed_userid' => $userid,
+            'performed_username' => $username,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ];
+
+        if (Schema::hasColumn('trash_logs', 'performed_role')) {
+            $data['performed_role'] = $role ?? '-';
+        }
+        if (Schema::hasColumn('trash_logs', 'performed_ip')) {
+            $data['performed_ip'] = $this->resolveClientIp($request);
+        }
+
+        DB::table('trash_logs')->insert($data);
+    }
+
+    private function normalizePhoneNumber(string $phone): string
+    {
+        $raw = preg_replace('/\D+/', '', trim($phone));
+        if ($raw === '') {
+            return '';
+        }
+        if (str_starts_with($raw, '0')) {
+            return '62'.substr($raw, 1);
+        }
+        if (str_starts_with($raw, '62')) {
+            return $raw;
+        }
+
+        return $raw;
+    }
+
+    private function findUserByEmail(string $email): ?object
+    {
+        $student = DB::table('student')->whereRaw('LOWER(email) = ?', [mb_strtolower($email)])->first();
+        if ($student) {
+            return (object) ['userid' => (int) $student->userid, 'channel' => 'student', 'contact' => $student->email];
+        }
+
+        $teacher = DB::table('teacher')->whereRaw('LOWER(email) = ?', [mb_strtolower($email)])->first();
+        if ($teacher) {
+            return (object) ['userid' => (int) $teacher->userid, 'channel' => 'teacher', 'contact' => $teacher->email];
+        }
+
+        $employer = DB::table('employer')->whereRaw('LOWER(email) = ?', [mb_strtolower($email)])->first();
+        if ($employer) {
+            return (object) ['userid' => (int) $employer->userid, 'channel' => 'employer', 'contact' => $employer->email];
+        }
+
+        return null;
+    }
+
+    private function findUserByPhone(string $phone): ?object
+    {
+        $normalized = $this->normalizePhoneNumber($phone);
+        if ($normalized === '') {
+            return null;
+        }
+        $variants = array_values(array_unique(array_filter([
+            $normalized,
+            $phone,
+            '+'.$normalized,
+            str_starts_with($normalized, '62') ? '0'.substr($normalized, 2) : null,
+        ])));
+
+        $student = DB::table('student')->whereIn('phonenumber', $variants)->first();
+        if ($student) {
+            return (object) ['userid' => (int) $student->userid, 'channel' => 'student', 'contact' => $normalized];
+        }
+
+        $teacher = DB::table('teacher')->whereIn('phonenumber', $variants)->first();
+        if ($teacher) {
+            return (object) ['userid' => (int) $teacher->userid, 'channel' => 'teacher', 'contact' => $normalized];
+        }
+
+        $employer = DB::table('employer')->whereIn('phonenumber', $variants)->first();
+        if ($employer) {
+            return (object) ['userid' => (int) $employer->userid, 'channel' => 'employer', 'contact' => $normalized];
+        }
+
+        return null;
     }
 
     public function notfound()
@@ -164,7 +348,7 @@ class Ctrl extends Controller
         }
     }
 
-    public function trash()
+    public function trash(Request $request)
     {
         $system = DB::table('system')->first();
         if (session('level') != 1) {
@@ -187,14 +371,82 @@ class Ctrl extends Controller
             return redirect('/home')->with('error', 'Access denied');
         }
 
-        $logs = DB::table('trash_logs')
-            ->where('entity_type', 'course')
+        $actionFilter = strtolower((string) $request->query('action_filter', 'all'));
+        $roleFilter = strtolower((string) $request->query('role_filter', 'all'));
+        $actionMap = [
+            'all' => null,
+            'edit' => 'update',
+            'delete' => 'delete',
+            'update' => 'update',
+        ];
+        $roleMap = [
+            'all' => null,
+            'admin' => 'Admin',
+            'superadmin' => 'Superadmin',
+            'kurikulum' => 'Kurikulum',
+            'curiculum' => 'Kurikulum',
+            'siswa' => 'Siswa',
+            'guru' => 'Guru',
+        ];
+        $action = $actionMap[$actionFilter] ?? null;
+        $roleKeyword = $roleMap[$roleFilter] ?? null;
+        $hasRoleColumn = Schema::hasColumn('trash_logs', 'performed_role');
+        $hasIpColumn = Schema::hasColumn('trash_logs', 'performed_ip');
+        $derivedRoleSql = "CASE
+            WHEN u.levelid = 3 THEN 'Siswa'
+            WHEN u.levelid = 1 THEN emp_role.rolename
+            WHEN u.levelid = 2 THEN tch_role.rolename
+            ELSE NULL
+        END";
+
+        $logsQuery = DB::table('trash_logs')
+            ->leftJoin('user as u', 'u.userid', '=', 'trash_logs.performed_userid')
+            ->leftJoin('employer as emp', 'emp.userid', '=', 'u.userid')
+            ->leftJoin('teacher as tch', 'tch.userid', '=', 'u.userid')
+            ->leftJoin('role as emp_role', 'emp_role.roleid', '=', 'emp.roleid')
+            ->leftJoin('role as tch_role', 'tch_role.roleid', '=', 'tch.roleid')
+            ->whereIn('entity_type', ['course', 'class', 'academic_year', 'block'])
+            ->select('trash_logs.*');
+
+        if ($hasRoleColumn) {
+            $logsQuery->selectRaw("COALESCE(NULLIF(TRIM(trash_logs.performed_role), ''), {$derivedRoleSql}, '-') as role_label");
+        } else {
+            $logsQuery->selectRaw("COALESCE({$derivedRoleSql}, '-') as role_label");
+        }
+        if ($hasIpColumn) {
+            $logsQuery->selectRaw("COALESCE(NULLIF(TRIM(trash_logs.performed_ip), ''), 'UNKNOWN') as ip_label");
+        } else {
+            $logsQuery->selectRaw("'UNKNOWN' as ip_label");
+        }
+
+        if (! empty($action)) {
+            $logsQuery->where('action', $action);
+        }
+        if (! empty($roleKeyword)) {
+            if ($hasRoleColumn) {
+                $logsQuery->whereRaw("LOWER(COALESCE(NULLIF(TRIM(trash_logs.performed_role), ''), {$derivedRoleSql}, '')) = ?", [strtolower($roleKeyword)]);
+            } else {
+                $logsQuery->whereRaw("LOWER(COALESCE({$derivedRoleSql}, '')) = ?", [strtolower($roleKeyword)]);
+            }
+        }
+
+        $logs = $logsQuery
             ->orderBy('created_at', 'desc')
-            ->paginate(20);
+            ->paginate(20)
+            ->appends([
+                'action_filter' => $actionFilter,
+                'role_filter' => $roleFilter,
+            ]);
+
+        if ($request->ajax()) {
+            return response()->json([
+                'html' => view('superadmin.partials.trash_table', compact('logs'))->render(),
+            ]);
+        }
 
         echo view('all.header', compact('system'));
         echo view('all.menu', compact('system'));
-        echo view('superadmin.trash', compact('logs'));
+        echo view('superadmin.trash', compact('logs', 'actionFilter', 'roleFilter'));
         echo view('all.footer');
     }
 
@@ -213,10 +465,6 @@ class Ctrl extends Controller
             return back()->with('error', 'Log tidak ditemukan');
         }
 
-        if ($log->entity_type !== 'course') {
-            return back()->with('error', 'Tipe data tidak didukung');
-        }
-
         $before = [];
         if (! empty($log->before_json)) {
             $decoded = json_decode($log->before_json, true);
@@ -225,36 +473,148 @@ class Ctrl extends Controller
             }
         }
 
-        $coursename = (string) ($before['coursename'] ?? '');
-        if ($coursename === '') {
-            return back()->with('error', 'Data restore tidak valid');
-        }
-
         DB::beginTransaction();
         try {
-            if ($log->action === 'update') {
-                DB::table('course')->where('courseid', $log->entity_id)->update([
-                    'coursename' => $coursename,
-                ]);
-            } elseif ($log->action === 'delete') {
-                $exists = DB::table('course')->where('courseid', $log->entity_id)->exists();
-                if ($exists) {
-                    DB::table('course')->where('courseid', $log->entity_id)->update([
-                        'coursename' => $coursename,
-                        'deleted_at' => null,
-                    ]);
-                } else {
-                    DB::table('course')->insert([
-                        'courseid' => $log->entity_id,
-                        'coursename' => $coursename,
-                        'deleted_at' => null,
-                    ]);
-                }
-            } else {
+            if (! in_array($log->action, ['update', 'delete'], true)) {
                 DB::rollBack();
 
                 return back()->with('error', 'Aksi tidak didukung');
             }
+
+            if ($log->entity_type === 'course') {
+                $coursename = (string) ($before['coursename'] ?? '');
+                if ($coursename === '') {
+                    DB::rollBack();
+
+                    return back()->with('error', 'Data restore course tidak valid');
+                }
+
+                if ($log->action === 'update') {
+                    DB::table('course')->where('courseid', $log->entity_id)->update([
+                        'coursename' => $coursename,
+                    ]);
+                } else {
+                    $exists = DB::table('course')->where('courseid', $log->entity_id)->exists();
+                    if ($exists) {
+                        DB::table('course')->where('courseid', $log->entity_id)->update([
+                            'coursename' => $coursename,
+                            'deleted_at' => null,
+                        ]);
+                    } else {
+                        DB::table('course')->insert([
+                            'courseid' => $log->entity_id,
+                            'coursename' => $coursename,
+                            'deleted_at' => null,
+                        ]);
+                    }
+                }
+            } elseif ($log->entity_type === 'class') {
+                $classname = (string) ($before['classname'] ?? '');
+                if ($classname === '') {
+                    DB::rollBack();
+
+                    return back()->with('error', 'Data restore class tidak valid');
+                }
+
+                if ($log->action === 'update') {
+                    DB::table('class')->where('classid', $log->entity_id)->update([
+                        'classname' => $classname,
+                    ]);
+                } else {
+                    $exists = DB::table('class')->where('classid', $log->entity_id)->exists();
+                    if ($exists) {
+                        DB::table('class')->where('classid', $log->entity_id)->update([
+                            'classname' => $classname,
+                        ]);
+                    } else {
+                        DB::table('class')->insert([
+                            'classid' => $log->entity_id,
+                            'classname' => $classname,
+                        ]);
+                    }
+                }
+            } elseif ($log->entity_type === 'academic_year') {
+                $payload = [
+                    'name' => (string) ($before['name'] ?? ''),
+                    'start_date' => (string) ($before['start_date'] ?? ''),
+                    'end_date' => (string) ($before['end_date'] ?? ''),
+                    'is_active' => (int) ($before['is_active'] ?? 0),
+                ];
+                if ($payload['name'] === '' || $payload['start_date'] === '' || $payload['end_date'] === '') {
+                    DB::rollBack();
+
+                    return back()->with('error', 'Data restore tahun ajaran tidak valid');
+                }
+
+                if ($log->action === 'update') {
+                    DB::table('academic_year')->where('academic_year_id', $log->entity_id)->update([
+                        'name' => $payload['name'],
+                        'start_date' => $payload['start_date'],
+                        'end_date' => $payload['end_date'],
+                        'is_active' => $payload['is_active'],
+                        'updated_at' => now(),
+                    ]);
+                } else {
+                    $exists = DB::table('academic_year')->where('academic_year_id', $log->entity_id)->exists();
+                    if ($exists) {
+                        DB::table('academic_year')->where('academic_year_id', $log->entity_id)->update([
+                            'name' => $payload['name'],
+                            'start_date' => $payload['start_date'],
+                            'end_date' => $payload['end_date'],
+                            'is_active' => $payload['is_active'],
+                            'updated_at' => now(),
+                        ]);
+                    } else {
+                        $insertData = $before;
+                        $insertData['academic_year_id'] = $log->entity_id;
+                        DB::table('academic_year')->insert($insertData);
+                    }
+                }
+            } elseif ($log->entity_type === 'block') {
+                $payload = [
+                    'academic_year_id' => (int) ($before['academic_year_id'] ?? 0),
+                    'name' => (string) ($before['name'] ?? ''),
+                    'date_start' => (string) ($before['date_start'] ?? ''),
+                    'date_end' => (string) ($before['date_end'] ?? ''),
+                ];
+                if ($payload['academic_year_id'] <= 0 || $payload['name'] === '' || $payload['date_start'] === '' || $payload['date_end'] === '') {
+                    DB::rollBack();
+
+                    return back()->with('error', 'Data restore blok tidak valid');
+                }
+
+                if ($log->action === 'update') {
+                    DB::table('block')->where('block_id', $log->entity_id)->update([
+                        'academic_year_id' => $payload['academic_year_id'],
+                        'name' => $payload['name'],
+                        'date_start' => $payload['date_start'],
+                        'date_end' => $payload['date_end'],
+                        'updated_at' => now(),
+                    ]);
+                } else {
+                    $exists = DB::table('block')->where('block_id', $log->entity_id)->exists();
+                    if ($exists) {
+                        DB::table('block')->where('block_id', $log->entity_id)->update([
+                            'academic_year_id' => $payload['academic_year_id'],
+                            'name' => $payload['name'],
+                            'date_start' => $payload['date_start'],
+                            'date_end' => $payload['date_end'],
+                            'updated_at' => now(),
+                        ]);
+                    } else {
+                        $insertData = $before;
+                        $insertData['block_id'] = $log->entity_id;
+                        DB::table('block')->insert($insertData);
+                    }
+                }
+            } else {
+                DB::rollBack();
+
+                return back()->with('error', 'Tipe data tidak didukung');
+            }
+
+            DB::table('trash_logs')->where('id', $log->id)->delete();
+            ActivityLogger::log("Mengembalikan data {$log->entity_type} #{$log->entity_id}", $request->ip());
 
             DB::commit();
         } catch (\Throwable $e) {
@@ -281,26 +641,25 @@ class Ctrl extends Controller
             return back()->with('error', 'Log tidak ditemukan');
         }
 
-        if ($log->entity_type !== 'course') {
-            return back()->with('error', 'Tipe data tidak didukung');
-        }
-
         if ($log->action === 'update') {
             DB::table('trash_logs')->where('id', $log->id)->delete();
+            ActivityLogger::log("Menghapus log edit {$log->entity_type} #{$log->entity_id}", $request->ip());
 
             return back()->with('success', 'Log edit dihapus');
         }
 
-        if ($log->action === 'delete') {
+        if ($log->action === 'delete' && $log->entity_type === 'course') {
             $course = DB::table('course')->where('courseid', $log->entity_id)->first();
             if (! $course) {
                 DB::table('trash_logs')->where('id', $log->id)->delete();
+                ActivityLogger::log("Menghapus log hapus course #{$log->entity_id}", $request->ip());
 
                 return back()->with('success', 'Log hapus dihapus');
             }
 
             if ($course->deleted_at === null) {
                 DB::table('trash_logs')->where('id', $log->id)->delete();
+                ActivityLogger::log("Menghapus log hapus course #{$log->entity_id}", $request->ip());
 
                 return back()->with('success', 'Log hapus dihapus');
             }
@@ -314,6 +673,7 @@ class Ctrl extends Controller
             try {
                 DB::table('course')->where('courseid', $log->entity_id)->delete();
                 DB::table('trash_logs')->where('id', $log->id)->delete();
+                ActivityLogger::log("Menghapus permanen data course #{$log->entity_id}", $request->ip());
                 DB::commit();
             } catch (\Throwable $e) {
                 DB::rollBack();
@@ -324,30 +684,91 @@ class Ctrl extends Controller
             return back()->with('success', 'Data berhasil dihapus permanen');
         }
 
+        if ($log->action === 'delete') {
+            DB::table('trash_logs')->where('id', $log->id)->delete();
+            ActivityLogger::log("Menghapus log hapus {$log->entity_type} #{$log->entity_id}", $request->ip());
+
+            return back()->with('success', 'Log hapus dihapus');
+        }
+
         return back()->with('error', 'Aksi tidak didukung');
     }
 
-    public function activityLog()
+    public function activityLog(Request $request)
     {
         $system = DB::table('system')->first();
         if (session('level') != 1) { // Only admin/superadmin
             return redirect('/home')->with('error', 'Access denied');
         }
 
-        $logs = DB::table('activity_logs')
+        $sessionRole = strtolower(trim((string) session('role')));
+        $canViewSuperadmin = $sessionRole === 'superadmin';
+
+        $roleFilter = strtolower((string) $request->query('role_filter', 'all'));
+        if (! $canViewSuperadmin && $roleFilter === 'superadmin') {
+            $roleFilter = 'all';
+        }
+        $roleMap = [
+            'all' => null,
+            'admin' => 'Admin',
+            'superadmin' => 'Superadmin',
+            'kurikulum' => 'Kurikulum',
+            'curiculum' => 'Kurikulum',
+            'guru' => 'Guru',
+            'siswa' => 'Siswa',
+        ];
+        $roleKeyword = $roleMap[$roleFilter] ?? null;
+
+        $logsQuery = DB::table('activity_logs')
+            ->where(function ($q) {
+                $q->where('action', 'not like', 'GET %')
+                    ->where('action', 'not like', 'POST %')
+                    ->where('action', 'not like', 'PUT %')
+                    ->where('action', 'not like', 'PATCH %')
+                    ->where('action', 'not like', 'DELETE %');
+            });
+
+        if (! $canViewSuperadmin) {
+            $logsQuery->whereRaw("LOWER(COALESCE(role, '')) <> 'superadmin'");
+        }
+
+        if (! empty($roleKeyword)) {
+            $logsQuery->whereRaw('LOWER(role) = ?', [strtolower($roleKeyword)]);
+        }
+
+        $logs = $logsQuery
             ->orderBy('created_at', 'desc')
-            ->paginate(20);
+            ->paginate(20)
+            ->appends([
+                'role_filter' => $roleFilter,
+            ]);
+
+        if ($request->ajax()) {
+            return response()->json([
+                'html' => view('superadmin.partials.activity_log_table', compact('logs'))->render(),
+            ]);
+        }
 
         echo view('all.header', compact('system'));
         echo view('all.menu', compact('system'));
-        echo view('superadmin.activity_log', compact('logs'));
+        echo view('superadmin.activity_log', compact('logs', 'roleFilter', 'canViewSuperadmin'));
         echo view('all.footer');
     }
 
-    public function allcourse()
+    public function allcourse(Request $request)
     {
         $system = DB::table('system')->first();
-        $course = DB::table('course')->whereNull('deleted_at')->get();
+        $course = DB::table('course')
+            ->whereNull('deleted_at')
+            ->orderBy('courseid', 'desc')
+            ->paginate(10);
+
+        if ($request->ajax()) {
+            return response()->json([
+                'html' => view('all.partials.course_table', compact('course'))->render(),
+            ]);
+        }
+
         echo view('all.header', compact('system'));
         echo view('all.menu', compact('system'));
         echo view('all.allcourse', compact('course'));
@@ -387,18 +808,15 @@ class Ctrl extends Controller
                 'coursename' => $request->coursename,
             ]);
 
-            $user = DB::table('user')->where('userid', session('userid'))->first();
-            DB::table('trash_logs')->insert([
-                'entity_type' => 'course',
-                'entity_id' => (int) $request->courseid,
-                'action' => 'update',
-                'before_json' => json_encode(['coursename' => $before->coursename], JSON_UNESCAPED_UNICODE),
-                'after_json' => json_encode(['coursename' => $request->coursename], JSON_UNESCAPED_UNICODE),
-                'performed_userid' => session('userid') ? (int) session('userid') : null,
-                'performed_username' => $user->username ?? null,
-                'created_at' => now(),
-                'updated_at' => now(),
-            ]);
+            $this->insertTrashLog(
+                $request,
+                'course',
+                (int) $request->courseid,
+                'update',
+                ['coursename' => $before->coursename],
+                ['coursename' => $request->coursename]
+            );
+            ActivityLogger::log("Mengubah data mata pelajaran #{$request->courseid} dari {$before->coursename} menjadi {$request->coursename}", $request->ip());
 
             DB::commit();
         } catch (\Throwable $e) {
@@ -410,7 +828,7 @@ class Ctrl extends Controller
         return back()->with('success', 'Mata Pelajaran berhasil diperbarui');
     }
 
-    public function deletecourse($id)
+    public function deletecourse(Request $request, $id)
     {
         DB::beginTransaction();
         try {
@@ -425,18 +843,15 @@ class Ctrl extends Controller
                 'deleted_at' => now(),
             ]);
 
-            $user = DB::table('user')->where('userid', session('userid'))->first();
-            DB::table('trash_logs')->insert([
-                'entity_type' => 'course',
-                'entity_id' => (int) $id,
-                'action' => 'delete',
-                'before_json' => json_encode(['coursename' => $before->coursename], JSON_UNESCAPED_UNICODE),
-                'after_json' => null,
-                'performed_userid' => session('userid') ? (int) session('userid') : null,
-                'performed_username' => $user->username ?? null,
-                'created_at' => now(),
-                'updated_at' => now(),
-            ]);
+            $this->insertTrashLog(
+                $request,
+                'course',
+                (int) $id,
+                'delete',
+                ['coursename' => $before->coursename],
+                null
+            );
+            ActivityLogger::log("Menghapus data mata pelajaran #{$id} ({$before->coursename})", $request->ip());
 
             DB::commit();
         } catch (\Throwable $e) {
@@ -448,10 +863,19 @@ class Ctrl extends Controller
         return back()->with('success', 'Mata Pelajaran berhasil dihapus');
     }
 
-    public function allclass()
+    public function allclass(Request $request)
     {
         $system = DB::table('system')->first();
-        $class = DB::table('class')->get();
+        $class = DB::table('class')
+            ->orderBy('classid', 'desc')
+            ->paginate(10);
+
+        if ($request->ajax()) {
+            return response()->json([
+                'html' => view('all.partials.class_table', compact('class'))->render(),
+            ]);
+        }
+
         echo view('all.header', compact('system'));
         echo view('all.menu', compact('system'));
         echo view('all.allclass', compact('class'));
@@ -478,16 +902,68 @@ class Ctrl extends Controller
             'classname' => 'required',
         ]);
 
-        DB::table('class')->where('classid', $request->classid)->update([
-            'classname' => $request->classname,
-        ]);
+        DB::beginTransaction();
+        try {
+            $before = DB::table('class')->where('classid', $request->classid)->first();
+            if (! $before) {
+                DB::rollBack();
+
+                return back()->with('error', 'Kelas tidak ditemukan');
+            }
+
+            DB::table('class')->where('classid', $request->classid)->update([
+                'classname' => $request->classname,
+            ]);
+
+            $this->insertTrashLog(
+                $request,
+                'class',
+                (int) $request->classid,
+                'update',
+                ['classname' => $before->classname],
+                ['classname' => $request->classname]
+            );
+            ActivityLogger::log("Mengubah data kelas #{$request->classid} dari {$before->classname} menjadi {$request->classname}", $request->ip());
+
+            DB::commit();
+        } catch (\Throwable $e) {
+            DB::rollBack();
+
+            return back()->with('error', 'Gagal memperbarui kelas');
+        }
 
         return back()->with('success', 'Kelas berhasil diperbarui');
     }
 
-    public function deleteclass($id)
+    public function deleteclass(Request $request, $id)
     {
-        DB::table('class')->where('classid', $id)->delete();
+        DB::beginTransaction();
+        try {
+            $before = DB::table('class')->where('classid', $id)->first();
+            if (! $before) {
+                DB::rollBack();
+
+                return back()->with('error', 'Kelas tidak ditemukan');
+            }
+
+            DB::table('class')->where('classid', $id)->delete();
+
+            $this->insertTrashLog(
+                $request,
+                'class',
+                (int) $id,
+                'delete',
+                ['classid' => (int) $before->classid, 'classname' => $before->classname],
+                null
+            );
+            ActivityLogger::log("Menghapus data kelas #{$id} ({$before->classname})", $request->ip());
+
+            DB::commit();
+        } catch (\Throwable $e) {
+            DB::rollBack();
+
+            return back()->with('error', 'Gagal menghapus kelas');
+        }
 
         return back()->with('success', 'Kelas berhasil dihapus');
     }
@@ -537,28 +1013,99 @@ class Ctrl extends Controller
             'date_end' => 'required|date',
         ]);
 
-        DB::table('block')->where('block_id', $request->block_id)->update([
-            'academic_year_id' => $request->academic_year_id,
-            'name' => $request->name,
-            'date_start' => $request->date_start,
-            'date_end' => $request->date_end,
-            'updated_at' => now(),
-        ]);
+        DB::beginTransaction();
+        try {
+            $before = DB::table('block')->where('block_id', $request->block_id)->first();
+            if (! $before) {
+                DB::rollBack();
+
+                return back()->with('error', 'Blok tidak ditemukan');
+            }
+
+            DB::table('block')->where('block_id', $request->block_id)->update([
+                'academic_year_id' => $request->academic_year_id,
+                'name' => $request->name,
+                'date_start' => $request->date_start,
+                'date_end' => $request->date_end,
+                'updated_at' => now(),
+            ]);
+
+            $this->insertTrashLog(
+                $request,
+                'block',
+                (int) $request->block_id,
+                'update',
+                [
+                    'academic_year_id' => (int) $before->academic_year_id,
+                    'name' => $before->name,
+                    'date_start' => (string) $before->date_start,
+                    'date_end' => (string) $before->date_end,
+                ],
+                [
+                    'academic_year_id' => (int) $request->academic_year_id,
+                    'name' => $request->name,
+                    'date_start' => $request->date_start,
+                    'date_end' => $request->date_end,
+                ]
+            );
+            ActivityLogger::log("Mengubah data blok #{$request->block_id} dari {$before->name} menjadi {$request->name}", $request->ip());
+
+            DB::commit();
+        } catch (\Throwable $e) {
+            DB::rollBack();
+
+            return back()->with('error', 'Gagal memperbarui blok');
+        }
 
         return back()->with('success', 'Blok berhasil diperbarui');
     }
 
-    public function deleteblock($id)
+    public function deleteblock(Request $request, $id)
     {
-        DB::table('block')->where('block_id', $id)->delete();
+        DB::beginTransaction();
+        try {
+            $before = DB::table('block')->where('block_id', $id)->first();
+            if (! $before) {
+                DB::rollBack();
+
+                return back()->with('error', 'Blok tidak ditemukan');
+            }
+
+            DB::table('block')->where('block_id', $id)->delete();
+
+            $this->insertTrashLog(
+                $request,
+                'block',
+                (int) $id,
+                'delete',
+                (array) $before,
+                null
+            );
+            ActivityLogger::log("Menghapus data blok #{$id} ({$before->name})", $request->ip());
+
+            DB::commit();
+        } catch (\Throwable $e) {
+            DB::rollBack();
+
+            return back()->with('error', 'Gagal menghapus blok');
+        }
 
         return back()->with('success', 'Blok berhasil dihapus');
     }
 
-    public function allacademicyear()
+    public function allacademicyear(Request $request)
     {
         $system = DB::table('system')->first();
-        $academic_year = DB::table('academic_year')->get();
+        $academic_year = DB::table('academic_year')
+            ->orderBy('academic_year_id', 'desc')
+            ->paginate(10);
+
+        if ($request->ajax()) {
+            return response()->json([
+                'html' => view('all.partials.academic_year_table', compact('academic_year'))->render(),
+            ]);
+        }
+
         echo view('all.header', compact('system'));
         echo view('all.menu', compact('system'));
         echo view('all.allacademicyear', compact('academic_year'));
@@ -601,25 +1148,87 @@ class Ctrl extends Controller
             'is_active' => 'required|boolean',
         ]);
 
-        if ($request->is_active) {
-            // Deactivate other years if this one is active
-            DB::table('academic_year')->where('academic_year_id', '!=', $request->academic_year_id)->update(['is_active' => 0]);
-        }
+        DB::beginTransaction();
+        try {
+            $before = DB::table('academic_year')->where('academic_year_id', $request->academic_year_id)->first();
+            if (! $before) {
+                DB::rollBack();
 
-        DB::table('academic_year')->where('academic_year_id', $request->academic_year_id)->update([
-            'name' => $request->name,
-            'start_date' => $request->start_date,
-            'end_date' => $request->end_date,
-            'is_active' => $request->is_active,
-            'updated_at' => now(),
-        ]);
+                return back()->with('error', 'Tahun ajaran tidak ditemukan');
+            }
+
+            if ($request->is_active) {
+                // Deactivate other years if this one is active
+                DB::table('academic_year')->where('academic_year_id', '!=', $request->academic_year_id)->update(['is_active' => 0]);
+            }
+
+            DB::table('academic_year')->where('academic_year_id', $request->academic_year_id)->update([
+                'name' => $request->name,
+                'start_date' => $request->start_date,
+                'end_date' => $request->end_date,
+                'is_active' => $request->is_active,
+                'updated_at' => now(),
+            ]);
+
+            $this->insertTrashLog(
+                $request,
+                'academic_year',
+                (int) $request->academic_year_id,
+                'update',
+                [
+                    'name' => $before->name,
+                    'start_date' => (string) $before->start_date,
+                    'end_date' => (string) $before->end_date,
+                    'is_active' => (int) $before->is_active,
+                ],
+                [
+                    'name' => $request->name,
+                    'start_date' => $request->start_date,
+                    'end_date' => $request->end_date,
+                    'is_active' => (int) $request->is_active,
+                ]
+            );
+            ActivityLogger::log("Mengubah data tahun ajaran #{$request->academic_year_id} dari {$before->name} menjadi {$request->name}", $request->ip());
+
+            DB::commit();
+        } catch (\Throwable $e) {
+            DB::rollBack();
+
+            return back()->with('error', 'Gagal memperbarui tahun ajaran');
+        }
 
         return back()->with('success', 'Tahun Ajaran berhasil diperbarui');
     }
 
-    public function deleteacademicyear($id)
+    public function deleteacademicyear(Request $request, $id)
     {
-        DB::table('academic_year')->where('academic_year_id', $id)->delete();
+        DB::beginTransaction();
+        try {
+            $before = DB::table('academic_year')->where('academic_year_id', $id)->first();
+            if (! $before) {
+                DB::rollBack();
+
+                return back()->with('error', 'Tahun ajaran tidak ditemukan');
+            }
+
+            DB::table('academic_year')->where('academic_year_id', $id)->delete();
+
+            $this->insertTrashLog(
+                $request,
+                'academic_year',
+                (int) $id,
+                'delete',
+                (array) $before,
+                null
+            );
+            ActivityLogger::log("Menghapus data tahun ajaran #{$id} ({$before->name})", $request->ip());
+
+            DB::commit();
+        } catch (\Throwable $e) {
+            DB::rollBack();
+
+            return back()->with('error', 'Gagal menghapus tahun ajaran');
+        }
 
         return back()->with('success', 'Tahun Ajaran berhasil dihapus');
     }
@@ -732,6 +1341,7 @@ class Ctrl extends Controller
         $email = null;
         $phonenumber = null;
         $role = null;
+        $teacherRoleId = null;
 
         if ($user->levelid == 3) {
             $data = DB::table('student')->where('userid', $user->userid)->first();
@@ -768,6 +1378,7 @@ class Ctrl extends Controller
                 $email = $data->email;
                 $phonenumber = $data->phonenumber;
                 $role = $data->rolename;
+                $teacherRoleId = (int) ($data->roleid ?? 0);
             }
         }
 
@@ -779,6 +1390,9 @@ class Ctrl extends Controller
             'email' => $email,
             'phonenumber' => $phonenumber,
             'role' => $role,
+            'teacher_roleid' => $teacherRoleId,
+            'latitude' => $request->input('latitude'),
+            'longitude' => $request->input('longitude'),
             'is_login' => true,
         ]);
 
@@ -804,11 +1418,241 @@ class Ctrl extends Controller
     }
 
     // ==============================================================================================
-    public function forgetemail()
+    public function forgotPasswordEmailPage()
     {
+        $system = DB::table('system')->first();
         echo view('all.header', compact('system'));
-        echo view('all.forgetpasswordemail');
+        echo view('all.forgot_password_email');
         echo view('all.footer');
+    }
+
+    public function forgotPasswordPhonePage()
+    {
+        $system = DB::table('system')->first();
+        $otpPhone = old('phone');
+        if (empty($otpPhone)) {
+            $otpPhone = session('otp_phone');
+        }
+        $showOtpForm = ! empty($otpPhone);
+        echo view('all.header', compact('system'));
+        echo view('all.forgot_password_phone', compact('showOtpForm', 'otpPhone'));
+        echo view('all.footer');
+    }
+
+    public function forgotPasswordSendEmailLink(Request $request)
+    {
+        $request->validate([
+            'email' => 'required|email',
+        ]);
+
+        $email = mb_strtolower(trim((string) $request->email));
+        $found = $this->findUserByEmail($email);
+        if (! $found) {
+            return back()->with('error', 'Email tidak terdaftar di database.');
+        }
+
+        $token = Str::random(64);
+        DB::table('password_reset_tokens')->updateOrInsert(
+            ['email' => $email],
+            ['token' => Hash::make($token), 'created_at' => now()]
+        );
+
+        $link = route('password.forgot.email.form', ['token' => $token, 'email' => $email]);
+
+        try {
+            Mail::send('emails.reset_password', ['link' => $link, 'email' => $email], function ($message) use ($email) {
+                $message->to($email);
+                $message->subject('Reset Password');
+            });
+        } catch (\Throwable $e) {
+            return back()->with('error', 'Gagal mengirim email reset password.')->withInput();
+        }
+
+        return back()->with('success', 'Link reset password sudah dikirim ke email Anda.');
+    }
+
+    public function forgotPasswordEmailResetForm(Request $request)
+    {
+        $system = DB::table('system')->first();
+        $email = mb_strtolower(trim((string) $request->query('email')));
+        $token = (string) $request->query('token');
+        if ($email === '' || $token === '') {
+            return redirect()->route('password.forgot')->with('error', 'Link reset password tidak valid.');
+        }
+
+        echo view('all.header', compact('system'));
+        echo view('all.reset_password_email', compact('email', 'token'));
+        echo view('all.footer');
+    }
+
+    public function forgotPasswordEmailReset(Request $request)
+    {
+        $request->validate([
+            'email' => 'required|email',
+            'token' => 'required|string',
+            'new_password' => 'required|min:6|confirmed',
+        ]);
+
+        $email = mb_strtolower(trim((string) $request->email));
+        $row = DB::table('password_reset_tokens')->where('email', $email)->first();
+        if (! $row) {
+            return back()->with('error', 'Token reset password tidak ditemukan.')->withInput();
+        }
+        if (! Hash::check((string) $request->token, (string) $row->token)) {
+            return back()->with('error', 'Token reset password tidak valid.')->withInput();
+        }
+        if ($row->created_at && now()->diffInMinutes($row->created_at) > 60) {
+            DB::table('password_reset_tokens')->where('email', $email)->delete();
+
+            return back()->with('error', 'Token reset password sudah kadaluarsa.');
+        }
+
+        $found = $this->findUserByEmail($email);
+        if (! $found) {
+            return back()->with('error', 'Email tidak terdaftar.');
+        }
+
+        DB::table('user')->where('userid', $found->userid)->update([
+            'password' => Hash::make($request->new_password),
+        ]);
+        DB::table('password_reset_tokens')->where('email', $email)->delete();
+
+        return redirect('/login')->with('success', 'Password berhasil direset. Silakan login.');
+    }
+
+    public function forgotPasswordSendPhoneOtp(Request $request)
+    {
+        $request->validate([
+            'phone' => 'required',
+        ]);
+
+        $phone = $this->normalizePhoneNumber((string) $request->phone);
+        $found = $this->findUserByPhone($phone);
+        if (! $found) {
+            return back()->with('error', 'Nomor telepon tidak terdaftar di database.')->withInput();
+        }
+
+        $otp = (string) random_int(100000, 999999);
+        $key = 'pwd_reset_otp:'.$phone;
+        Cache::put($key, [
+            'userid' => $found->userid,
+            'otp' => Hash::make($otp),
+            'expires_at' => now()->addMinutes(10)->toDateTimeString(),
+        ], now()->addMinutes(10));
+
+        try {
+            $response = Http::withHeaders([
+                'Authorization' => env('FONNTE_TOKEN'),
+            ])->post('https://api.fonnte.com/send', [
+                'target' => $phone,
+                'message' => "Kode OTP reset password Anda: *{$otp}*\nBerlaku 10 menit.",
+                'countryCode' => '62',
+            ]);
+
+            if (! $response->successful()) {
+                return back()->with('error', 'Gagal mengirim OTP WhatsApp.')->withInput();
+            }
+        } catch (\Throwable $e) {
+            return back()->with('error', 'Terjadi kesalahan saat kirim OTP WhatsApp.')->withInput();
+        }
+
+        return redirect()
+            ->route('password.forgot.phone.page')
+            ->with('success', 'OTP reset password sudah dikirim via WhatsApp.')
+            ->with('otp_phone', $phone)
+            ->withInput(['phone' => $phone]);
+    }
+
+    public function forgotPasswordPhoneVerifyOtp(Request $request)
+    {
+        $request->validate([
+            'phone' => 'required',
+            'otp' => 'required|digits:6',
+        ]);
+
+        $phone = $this->normalizePhoneNumber((string) $request->phone);
+        $key = 'pwd_reset_otp:'.$phone;
+        $payload = Cache::get($key);
+        if (! is_array($payload)) {
+            return redirect()->route('password.forgot.phone.page')
+                ->with('error', 'OTP tidak ditemukan atau sudah kadaluarsa.')
+                ->with('otp_phone', $phone)
+                ->withInput(['phone' => $phone]);
+        }
+
+        $expiresAt = isset($payload['expires_at']) ? (string) $payload['expires_at'] : '';
+        if ($expiresAt === '' || now()->gt(\Carbon\Carbon::parse($expiresAt))) {
+            Cache::forget($key);
+
+            return redirect()->route('password.forgot.phone.page')
+                ->with('error', 'OTP sudah kadaluarsa.')
+                ->with('otp_phone', $phone)
+                ->withInput(['phone' => $phone]);
+        }
+
+        if (! Hash::check((string) $request->otp, (string) ($payload['otp'] ?? ''))) {
+            return redirect()->route('password.forgot.phone.page')
+                ->with('error', 'OTP salah.')
+                ->with('otp_phone', $phone)
+                ->withInput(['phone' => $phone]);
+        }
+
+        $userid = (int) ($payload['userid'] ?? 0);
+        if ($userid <= 0) {
+            return redirect()->route('password.forgot.phone.page')
+                ->with('error', 'Data OTP tidak valid.')
+                ->with('otp_phone', $phone)
+                ->withInput(['phone' => $phone]);
+        }
+
+        Cache::forget($key);
+        $resetToken = Str::random(64);
+        Cache::put('pwd_reset_phone_token:'.$resetToken, [
+            'userid' => $userid,
+            'phone' => $phone,
+        ], now()->addMinutes(10));
+
+        return redirect()->route('password.forgot.phone.new.form', ['token' => $resetToken]);
+    }
+
+    public function forgotPasswordPhoneNewPasswordForm(Request $request)
+    {
+        $system = DB::table('system')->first();
+        $token = (string) $request->query('token');
+        $payload = Cache::get('pwd_reset_phone_token:'.$token);
+        if ($token === '' || ! is_array($payload)) {
+            return redirect()->route('password.forgot.phone.page')->with('error', 'Sesi reset password tidak valid atau kadaluarsa.');
+        }
+
+        echo view('all.header', compact('system'));
+        echo view('all.reset_password_phone', compact('token'));
+        echo view('all.footer');
+    }
+
+    public function forgotPasswordPhoneNewPassword(Request $request)
+    {
+        $request->validate([
+            'token' => 'required|string',
+            'new_password' => 'required|min:6|confirmed',
+        ]);
+
+        $token = (string) $request->token;
+        $payload = Cache::get('pwd_reset_phone_token:'.$token);
+        if (! is_array($payload)) {
+            return back()->with('error', 'Sesi reset password tidak valid atau kadaluarsa.');
+        }
+
+        $userid = (int) ($payload['userid'] ?? 0);
+        if ($userid <= 0) {
+            return back()->with('error', 'Data user tidak valid.');
+        }
+
+        DB::table('user')->where('userid', $userid)->update([
+            'password' => Hash::make($request->new_password),
+        ]);
+        Cache::forget('pwd_reset_phone_token:'.$token);
+
+        return redirect('/login')->with('success', 'Password berhasil direset. Silakan login.');
     }
 
     // ==============================================================================================
@@ -828,6 +1672,11 @@ class Ctrl extends Controller
         $card2_label = '';
         $card3_value = 0;
         $card3_label = '';
+
+        if (! $user) {
+            $card2_value = 0;
+            $card2_label = 'Silakan login untuk melihat ringkasan';
+        }
 
         // Logic for Card 1 (Total Users - only for Superadmin/Admin)
         if ($user && $user->levelid == 1) { // Employer (Superadmin/Admin)
@@ -867,14 +1716,22 @@ class Ctrl extends Controller
             } elseif ($user->levelid == 2) { // Teacher or Curriculum
                 $teacher = DB::table('teacher')->where('userid', $userid)->first();
                 if ($teacher) {
-                    if ($teacher->roleid == 4) { // Curriculum (assuming roleid 4 is Curriculum based on previous context)
-                        // Card 2: Total tugas (semua)
-                        $card2_value = DB::table('assignment')->count();
-                        $card2_label = 'Total Semua Tugas';
+                    if (in_array((int) $teacher->roleid, [4, 5], true)) { // Kurikulum
+                        // Kurikulum fokus ke jadwal, bukan tugas.
+                        $activeYear = DB::table('academic_year')->where('is_active', 1)->first();
+                        if ($activeYear) {
+                            $card2_value = DB::table('schedule')
+                                ->where('academic_year_id', $activeYear->academic_year_id)
+                                ->count();
+                            $card2_label = 'Total Jadwal Aktif';
+                        } else {
+                            $card2_value = 0;
+                            $card2_label = 'Total Jadwal Aktif';
+                        }
 
-                        // Card 3: Total tugas yang dikumpulkan (semua)
-                        $card3_value = DB::table('quest')->count();
-                        $card3_label = 'Total Pengumpulan Tugas';
+                        // Tidak tampilkan card tugas masuk untuk kurikulum.
+                        $card3_value = 0;
+                        $card3_label = '';
 
                     } else { // Regular Teacher
                         // Assignments for Calendar
@@ -1390,6 +2247,8 @@ class Ctrl extends Controller
         DB::table('system')
             ->where('systemid', $request->systemid)
             ->update($data);
+
+        ActivityLogger::log('Mengubah setting sistem', $request->ip());
 
         return redirect('/setting')->with('success', 'Setting succesafully updated');
     }

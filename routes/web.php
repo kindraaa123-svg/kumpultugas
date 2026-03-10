@@ -8,6 +8,16 @@ Route::get('/', 'App\Http\Controllers\Ctrl@home');
 
 Route::get('/login', 'App\Http\Controllers\Ctrl@login');
 Route::post('/login/process', 'App\Http\Controllers\Ctrl@loginact');
+Route::get('/forgot-password', 'App\Http\Controllers\Ctrl@forgotPasswordEmailPage')->name('password.forgot');
+Route::get('/forgot-password/email', 'App\Http\Controllers\Ctrl@forgotPasswordEmailPage')->name('password.forgot.email.page');
+Route::get('/forgot-password/phone', 'App\Http\Controllers\Ctrl@forgotPasswordPhonePage')->name('password.forgot.phone.page');
+Route::post('/forgot-password/email/send-link', 'App\Http\Controllers\Ctrl@forgotPasswordSendEmailLink')->name('password.forgot.email.send');
+Route::get('/forgot-password/email/reset', 'App\Http\Controllers\Ctrl@forgotPasswordEmailResetForm')->name('password.forgot.email.form');
+Route::post('/forgot-password/email/reset', 'App\Http\Controllers\Ctrl@forgotPasswordEmailReset')->name('password.forgot.email.reset');
+Route::post('/forgot-password/phone/send-otp', 'App\Http\Controllers\Ctrl@forgotPasswordSendPhoneOtp')->name('password.forgot.phone.send');
+Route::post('/forgot-password/phone/verify-otp', 'App\Http\Controllers\Ctrl@forgotPasswordPhoneVerifyOtp')->name('password.forgot.phone.verify');
+Route::get('/forgot-password/phone/new-password', 'App\Http\Controllers\Ctrl@forgotPasswordPhoneNewPasswordForm')->name('password.forgot.phone.new.form');
+Route::post('/forgot-password/phone/new-password', 'App\Http\Controllers\Ctrl@forgotPasswordPhoneNewPassword')->name('password.forgot.phone.new.save');
 Route::get('/logout', 'App\Http\Controllers\Ctrl@logout');
 
 Route::get('/home', 'App\Http\Controllers\Ctrl@home');

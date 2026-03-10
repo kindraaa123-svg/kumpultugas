@@ -1,543 +1,149 @@
+<div class="page-container">
+    <div class="main-content">
+        <div class="section__content section__content--p30">
+            <div class="container-fluid">
+                @php
+                    $sessionRole = strtolower((string) session('role'));
+                    $isLoggedIn = !empty(session('userid'));
+                    $teacherRoleId = (int) (session('teacher_roleid') ?? 0);
+                    $roleLabel = 'Guest';
+                    if ($isLoggedIn) {
+                        if ((int) session('level') === 3) {
+                            $roleLabel = 'Siswa';
+                        } elseif ((int) session('level') === 2) {
+                            $isKurikulum = in_array($sessionRole, ['kurikulum', 'curiculum'], true) || in_array($teacherRoleId, [4, 5], true);
+                            $roleLabel = $isKurikulum ? 'Kurikulum' : 'Guru';
+                        } elseif ((int) session('level') === 1) {
+                            $roleLabel = $sessionRole === 'superadmin' ? 'Superadmin' : 'Admin';
+                        }
+                    }
 
-        <div class="page-container">
+                    $quickLinks = [];
+                    if (!$isLoggedIn) {
+                        $quickLinks[] = ['label' => 'Login', 'url' => '/login'];
+                    } elseif ($roleLabel === 'Siswa') {
+                        $quickLinks[] = ['label' => 'Lihat Tugas', 'url' => route('assignment.index')];
+                        $quickLinks[] = ['label' => 'Profil', 'url' => route('profile')];
+                    } elseif ($roleLabel === 'Guru') {
+                        $quickLinks[] = ['label' => 'Kelola Tugas', 'url' => route('assignment.index')];
+                        $quickLinks[] = ['label' => 'Jadwal', 'url' => route('jadwal.index')];
+                    } elseif ($roleLabel === 'Kurikulum') {
+                        $quickLinks[] = ['label' => 'Jadwal', 'url' => route('jadwal.index')];
+                        $quickLinks[] = ['label' => 'Setting Jadwal', 'url' => route('jadwal.setting')];
+                    } else {
+                        $quickLinks[] = ['label' => 'Userdata', 'url' => '/userdata'];
+                        $quickLinks[] = ['label' => 'Activity Log', 'url' => route('activity.log')];
+                    }
 
+                    $eventList = collect($events ?? [])->take(8);
+                @endphp
 
-            <!-- MAIN CONTENT-->
-            <div class="main-content">
-                <div class="section__content section__content--p30">
-                    <div class="container-fluid">
-                        <div class="row">
-                            <div class="col-md-12">
-                                <div class="overview-wrap">
-                                    @if(!session('userid'))
-                                        <a href="/login" class="au-btn au-btn-icon au-btn--blue">
-                                            Login</a>
-                                    @endif
-                                </div>
+                <div class="row mb-4">
+                    <div class="col-md-8">
+                        <div class="card border-0 shadow-sm" style="border-radius: 14px;">
+                            <div class="card-body p-4">
+                                <h3 class="mb-2" style="font-weight: 700;">Dashboard {{ $roleLabel }}</h3>
+                                <p class="text-muted mb-0">Pantau ringkasan aktivitas dan deadline tugas dalam satu halaman.</p>
                             </div>
                         </div>
-                        <div class="row m-t-25">
-                            @php
-                                $cardCount = 1; // Card 2 (Total Tugas / Assignment) is always visible
-                                if(isset($user) && $user->levelid == 1) $cardCount++; // Card 1
-                                if(isset($user) && $user->levelid != 1) $cardCount++; // Card 3
-                                
-                                $colClass = 'col-md-6'; // Default fallback
-                                if ($cardCount == 1) $colClass = 'col-md-12';
-                                if ($cardCount == 2) $colClass = 'col-md-6';
-                                if ($cardCount == 3) $colClass = 'col-md-4';
-                            @endphp
-
-                            @if(isset($user) && $user->levelid == 1)
-                            <div class="{{ $colClass }}">
-                                <div class="overview-item overview-item--c1">
-                                    <div class="overview__inner">
-                                        <div class="overview-box clearfix">
-                                            <div class="icon">
-                                                <i class="zmdi zmdi-account-o"></i>
-                                            </div>
-                                            <div class="text">
-                                                <h2>{{ $card1_value }}</h2>
-                                                <span>{{ $card1_label }}</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                            @endif
-
-                            <div class="{{ $colClass }}">
-                                <div class="overview-item overview-item--c2">
-                                    <div class="overview__inner">
-                                        <div class="overview-box clearfix">
-                                            <div class="icon">
-                                                <i class="zmdi zmdi-file-text"></i>
-                                            </div>
-                                            <div class="text">
-                                                <h2>{{ $card2_value }}</h2>
-                                                <span>{{ $card2_label }}</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            @if(isset($user) && $user->levelid != 1)
-                            <div class="{{ $colClass }}">
-                                <div class="overview-item overview-item--c3">
-                                    <div class="overview__inner">
-                                        <div class="overview-box clearfix">
-                                            <div class="icon">
-                                                <i class="zmdi zmdi-check-square"></i>
-                                            </div>
-                                            <div class="text">
-                                                <h2>{{ $card3_value }}</h2>
-                                                <span>{{ $card3_label }}</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                            @endif
-                        </div>
-
-                        <div class="row">
-                            <div class="col-md-12">
-                                <div class="au-card m-b-30">
-                                    <div class="au-card-inner">
-                                        <h3 class="title-2 m-b-40">Kalender Tugas</h3>
-                                        <div id="calendar"></div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="row">
-                            <div class="col-lg-6">
-                                <div class="au-card recent-report">
-                                    <div class="au-card-inner">
-                                        <h3 class="title-2">recent reports</h3>
-                                        <div class="chart-info">
-                                            <div class="chart-info__right">
-                                                <div class="chart-statis">
-                                                    <span class="index incre">
-                                                        <i class="zmdi zmdi-long-arrow-up"></i>25%</span>
-                                                    <span class="label">products</span>
-                                                </div>
-                                                <div class="chart-statis me-0">
-                                                    <span class="index decre">
-                                                        <i class="zmdi zmdi-long-arrow-down"></i>10%</span>
-                                                    <span class="label">services</span>
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div class="recent-report__chart">
-                                            <canvas id="recent-rep-chart"></canvas>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="col-lg-6">
-                                <div class="au-card chart-percent-card">
-                                    <div class="au-card-inner">
-                                        <h3 class="title-2 tm-b-5">Revenue Distribution</h3>
-                                        <div class="row no-gutters">
-                                            <div class="col-xl-12">
-                                                <div class="percent-chart">
-                                                    <canvas id="percent-chart"></canvas>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="row">
-                            <div class="col-lg-9">
-                                <h2 class="title-1 m-b-25">Earnings By Items</h2>
-                                <div class="table-responsive table--no-card m-b-40">
-                                    <table class="table table-borderless table-striped table-earning">
-                                        <thead>
-                                            <tr>
-                                                <th>date</th>
-                                                <th>order ID</th>
-                                                <th>name</th>
-                                                <th class="text-end">price</th>
-                                                <th class="text-end">quantity</th>
-                                                <th class="text-end">total</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            <tr>
-                                                <td>2025-01-15 14:32</td>
-                                                <td>100398</td>
-                                                <td>iPhone 17 128GB Titanium</td>
-                                                <td class="text-end">$1299.00</td>
-                                                <td class="text-end">1</td>
-                                                <td class="text-end">$999.00</td>
-                                            </tr>
-                                            <tr>
-                                                <td>2025-01-14 10:18</td>
-                                                <td>100397</td>
-                                                <td>Samsung Galaxy S25 Ultra</td>
-                                                <td class="text-end">$1199.00</td>
-                                                <td class="text-end">1</td>
-                                                <td class="text-end">$756.00</td>
-                                            </tr>
-                                            <tr>
-                                                <td>2025-01-13 16:45</td>
-                                                <td>100396</td>
-                                                <td>PS5 Pro DualSense Controller</td>
-                                                <td class="text-end">$79.00</td>
-                                                <td class="text-end">2</td>
-                                                <td class="text-end">$44.00</td>
-                                            </tr>
-                                            <tr>
-                                                <td>2025-01-12 09:23</td>
-                                                <td>100395</td>
-                                                <td>iPhone 17 Pro Max 1TB Space Black</td>
-                                                <td class="text-end">$1699.00</td>
-                                                <td class="text-end">1</td>
-                                                <td class="text-end">$1199.00</td>
-                                            </tr>
-                                            <tr>
-                                                <td>2025-01-11 13:17</td>
-                                                <td>100393</td>
-                                                <td>USB-C to USB-C Thunderbolt 5 Cable</td>
-                                                <td class="text-end">$29.00</td>
-                                                <td class="text-end">3</td>
-                                                <td class="text-end">$30.00</td>
-                                            </tr>
-                                            <tr>
-                                                <td>2025-01-10 11:55</td>
-                                                <td>100392</td>
-                                                <td>Apple Watch Series 11 Ultra</td>
-                                                <td class="text-end">$899.00</td>
-                                                <td class="text-end">6</td>
-                                                <td class="text-end">$1494.00</td>
-                                            </tr>
-                                            <tr>
-                                                <td>2025-01-09 15:42</td>
-                                                <td>100391</td>
-                                                <td>Sony A7R VI Mirrorless Camera</td>
-                                                <td class="text-end">$3899.00</td>
-                                                <td class="text-end">1</td>
-                                                <td class="text-end">$699.00</td>
-                                            </tr>
-                                            <tr>
-                                                <td>2025-01-08 08:29</td>
-                                                <td>100393</td>
-                                                <td>USB-C to Lightning Cable 2m</td>
-                                                <td class="text-end">$19.00</td>
-                                                <td class="text-end">3</td>
-                                                <td class="text-end">$30.00</td>
-                                            </tr>
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </div>
-                            <div class="col-lg-3">
-                                <h2 class="title-1 m-b-25">Top countries</h2>
-                                <div class="au-card au-card--bg-blue au-card-top-countries m-b-40">
-                                    <div class="au-card-inner">
-                                        <div class="table-responsive">
-                                            <table class="table table-top-countries">
-                                                <tbody>
-                                                    <tr>
-                                                        <td>United States</td>
-                                                        <td class="text-end">$119,366.96</td>
-                                                    </tr>
-                                                    <tr>
-                                                        <td>Australia</td>
-                                                        <td class="text-end">$70,261.65</td>
-                                                    </tr>
-                                                    <tr>
-                                                        <td>United Kingdom</td>
-                                                        <td class="text-end">$46,399.22</td>
-                                                    </tr>
-                                                    <tr>
-                                                        <td>Turkey</td>
-                                                        <td class="text-end">$35,364.90</td>
-                                                    </tr>
-                                                    <tr>
-                                                        <td>Germany</td>
-                                                        <td class="text-end">$20,366.96</td>
-                                                    </tr>
-                                                    <tr>
-                                                        <td>France</td>
-                                                        <td class="text-end">$10,366.96</td>
-                                                    </tr>
-                                                    <tr>
-                                                        <td>Australia</td>
-                                                        <td class="text-end">$5,366.96</td>
-                                                    </tr>
-                                                    <tr>
-                                                        <td>Italy</td>
-                                                        <td class="text-end">$1639.32</td>
-                                                    </tr>
-                                                </tbody>
-                                            </table>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="row">
-                            <div class="col-lg-6">
-                                <div class="au-card au-card--no-shadow au-card--no-pad m-b-40">
-                                    <div class="au-card-title" style="background-image:url('images/bg-title-01.jpg');">
-                                        <div class="bg-overlay bg-overlay--blue"></div>
-                                        <h3>
-                                            <i class="zmdi zmdi-account-calendar"></i>23 January, 2025</h3>
-                                        <button class="au-btn-plus">
-                                            <i class="zmdi zmdi-plus"></i>
-                                        </button>
-                                    </div>
-                                    <div class="au-task js-list-load">
-                                        <div class="au-task__title">
-                                            <p>Tasks for John Doe</p>
-                                        </div>
-                                        <div class="au-task-list js-scrollbar3">
-                                            <div class="au-task__item au-task__item--danger">
-                                                <div class="au-task__item-inner">
-                                                    <h5 class="task">
-                                                        <a href="#">Meeting about plan for Admin Template 2025</a>
-                                                    </h5>
-                                                    <span class="time">10:00 AM</span>
-                                                </div>
-                                            </div>
-                                            <div class="au-task__item au-task__item--warning">
-                                                <div class="au-task__item-inner">
-                                                    <h5 class="task">
-                                                        <a href="#">Create new task for Dashboard</a>
-                                                    </h5>
-                                                    <span class="time">11:00 AM</span>
-                                                </div>
-                                            </div>
-                                            <div class="au-task__item au-task__item--primary">
-                                                <div class="au-task__item-inner">
-                                                    <h5 class="task">
-                                                        <a href="#">Meeting about plan for Admin Template 2025</a>
-                                                    </h5>
-                                                    <span class="time">02:00 PM</span>
-                                                </div>
-                                            </div>
-                                            <div class="au-task__item au-task__item--success">
-                                                <div class="au-task__item-inner">
-                                                    <h5 class="task">
-                                                        <a href="#">Create new task for Dashboard</a>
-                                                    </h5>
-                                                    <span class="time">03:30 PM</span>
-                                                </div>
-                                            </div>
-                                            <div class="au-task__item au-task__item--danger js-load-item">
-                                                <div class="au-task__item-inner">
-                                                    <h5 class="task">
-                                                        <a href="#">Meeting about plan for Admin Template 2025</a>
-                                                    </h5>
-                                                    <span class="time">10:00 AM</span>
-                                                </div>
-                                            </div>
-                                            <div class="au-task__item au-task__item--warning js-load-item">
-                                                <div class="au-task__item-inner">
-                                                    <h5 class="task">
-                                                        <a href="#">Create new task for Dashboard</a>
-                                                    </h5>
-                                                    <span class="time">11:00 AM</span>
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div class="au-task__footer">
-                                            <button class="au-btn au-btn-load js-load-btn">load more</button>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="col-lg-6">
-                                <div class="au-card au-card--no-shadow au-card--no-pad m-b-40">
-                                    <div class="au-card-title" style="background-image:url('images/bg-title-02.jpg');">
-                                        <div class="bg-overlay bg-overlay--blue"></div>
-                                        <h3>
-                                            <i class="zmdi zmdi-comment-text"></i>New Messages</h3>
-                                        <button class="au-btn-plus">
-                                            <i class="zmdi zmdi-plus"></i>
-                                        </button>
-                                    </div>
-                                    <div class="au-inbox-wrap js-inbox-wrap">
-                                        <div class="au-message js-list-load">
-                                            <div class="au-message__noti">
-                                                <p>You Have
-                                                    <span>2</span>
-
-                                                    new messages
-                                                </p>
-                                            </div>
-                                            <div class="au-message-list">
-                                                <div class="au-message__item unread">
-                                                    <div class="au-message__item-inner">
-                                                        <div class="au-message__item-text">
-                                                            <div class="avatar-wrap">
-                                                                <div class="avatar">
-                                                                    <img src="images/icon/avatar-02.jpg" alt="John Smith">
-                                                                </div>
-                                                            </div>
-                                                            <div class="text">
-                                                                <h5 class="name">John Smith</h5>
-                                                                <p>Have sent a photo</p>
-                                                            </div>
-                                                        </div>
-                                                        <div class="au-message__item-time">
-                                                            <span>12 Min ago</span>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                                <div class="au-message__item unread">
-                                                    <div class="au-message__item-inner">
-                                                        <div class="au-message__item-text">
-                                                            <div class="avatar-wrap online">
-                                                                <div class="avatar">
-                                                                    <img src="images/icon/avatar-03.jpg" alt="Nicholas Martinez">
-                                                                </div>
-                                                            </div>
-                                                            <div class="text">
-                                                                <h5 class="name">Nicholas Martinez</h5>
-                                                                <p>You are now connected on message</p>
-                                                            </div>
-                                                        </div>
-                                                        <div class="au-message__item-time">
-                                                            <span>11:00 PM</span>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                                <div class="au-message__item">
-                                                    <div class="au-message__item-inner">
-                                                        <div class="au-message__item-text">
-                                                            <div class="avatar-wrap online">
-                                                                <div class="avatar">
-                                                                    <img src="images/icon/avatar-04.jpg" alt="Michelle Sims">
-                                                                </div>
-                                                            </div>
-                                                            <div class="text">
-                                                                <h5 class="name">Michelle Sims</h5>
-                                                                <p>Lorem ipsum dolor sit amet</p>
-                                                            </div>
-                                                        </div>
-                                                        <div class="au-message__item-time">
-                                                            <span>Yesterday</span>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                                <div class="au-message__item">
-                                                    <div class="au-message__item-inner">
-                                                        <div class="au-message__item-text">
-                                                            <div class="avatar-wrap">
-                                                                <div class="avatar">
-                                                                    <img src="images/icon/avatar-05.jpg" alt="Michelle Sims">
-                                                                </div>
-                                                            </div>
-                                                            <div class="text">
-                                                                <h5 class="name">Michelle Sims</h5>
-                                                                <p>Purus feugiat finibus</p>
-                                                            </div>
-                                                        </div>
-                                                        <div class="au-message__item-time">
-                                                            <span>Sunday</span>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                                <div class="au-message__item js-load-item">
-                                                    <div class="au-message__item-inner">
-                                                        <div class="au-message__item-text">
-                                                            <div class="avatar-wrap online">
-                                                                <div class="avatar">
-                                                                    <img src="images/icon/avatar-04.jpg" alt="Michelle Sims">
-                                                                </div>
-                                                            </div>
-                                                            <div class="text">
-                                                                <h5 class="name">Michelle Sims</h5>
-                                                                <p>Lorem ipsum dolor sit amet</p>
-                                                            </div>
-                                                        </div>
-                                                        <div class="au-message__item-time">
-                                                            <span>Yesterday</span>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                                <div class="au-message__item js-load-item">
-                                                    <div class="au-message__item-inner">
-                                                        <div class="au-message__item-text">
-                                                            <div class="avatar-wrap">
-                                                                <div class="avatar">
-                                                                    <img src="images/icon/avatar-05.jpg" alt="Michelle Sims">
-                                                                </div>
-                                                            </div>
-                                                            <div class="text">
-                                                                <h5 class="name">Michelle Sims</h5>
-                                                                <p>Purus feugiat finibus</p>
-                                                            </div>
-                                                        </div>
-                                                        <div class="au-message__item-time">
-                                                            <span>Sunday</span>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                            <div class="au-message__footer">
-                                                <button class="au-btn au-btn-load js-load-btn">load more</button>
-                                            </div>
-                                        </div>
-                                        <div class="au-chat">
-                                            <div class="au-chat__title">
-                                                <div class="au-chat-info">
-                                                    <div class="avatar-wrap online">
-                                                        <div class="avatar avatar--small">
-                                                            <img src="images/icon/avatar-02.jpg" alt="John Smith">
-                                                        </div>
-                                                    </div>
-                                                    <span class="nick">
-                                                        <a href="#">John Smith</a>
-                                                    </span>
-                                                </div>
-                                            </div>
-                                            <div class="au-chat__content">
-                                                <div class="recei-mess-wrap">
-                                                    <span class="mess-time">12 Min ago</span>
-                                                    <div class="recei-mess__inner">
-                                                        <div class="avatar avatar--tiny">
-                                                            <img src="images/icon/avatar-02.jpg" alt="John Smith">
-                                                        </div>
-                                                        <div class="recei-mess-list">
-                                                            <div class="recei-mess">Lorem ipsum dolor sit amet, consectetur adipiscing elit non iaculis</div>
-                                                            <div class="recei-mess">Donec tempor, sapien ac viverra</div>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                                <div class="send-mess-wrap">
-                                                    <span class="mess-time">30 Sec ago</span>
-                                                    <div class="send-mess__inner">
-                                                        <div class="send-mess-list">
-                                                            <div class="send-mess">Lorem ipsum dolor sit amet, consectetur adipiscing elit non iaculis</div>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                            <div class="au-chat-textfield">
-                                                <form class="au-form-icon">
-                                                    <input class="au-input au-input--full au-input--h65" type="text" placeholder="Type a message">
-                                                    <button class="au-input-icon">
-                                                        <i class="zmdi zmdi-camera"></i>
-                                                    </button>
-                                                </form>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="row">
-                            <div class="col-md-12">
-                                <div class="copyright">
-                                    <p>Copyright © 2025 Colorlib. All rights reserved. Template by <a href="https://colorlib.com" rel="nofollow" target="_blank">Colorlib</a>.</p>
+                    </div>
+                    <div class="col-md-4 mt-3 mt-md-0">
+                        <div class="card border-0 shadow-sm" style="border-radius: 14px;">
+                            <div class="card-body p-4">
+                                <div class="small text-muted mb-2">Quick Access</div>
+                                <div class="d-flex flex-wrap" style="gap:8px;">
+                                    @foreach($quickLinks as $link)
+                                        <a href="{{ $link['url'] }}" class="btn btn-outline-primary btn-sm">{{ $link['label'] }}</a>
+                                    @endforeach
                                 </div>
                             </div>
                         </div>
                     </div>
                 </div>
+
+                <div class="row mb-4">
+                    @if(isset($card1_label) && $card1_label !== '')
+                        <div class="col-md-4 mb-3">
+                            <div class="card border-0 shadow-sm" style="border-radius: 14px;">
+                                <div class="card-body">
+                                    <div class="text-muted small">{{ $card1_label }}</div>
+                                    <h2 class="mb-0">{{ $card1_value }}</h2>
+                                </div>
+                            </div>
+                        </div>
+                    @endif
+                    <div class="col-md-4 mb-3">
+                        <div class="card border-0 shadow-sm" style="border-radius: 14px;">
+                            <div class="card-body">
+                                <div class="text-muted small">{{ $card2_label }}</div>
+                                <h2 class="mb-0">{{ $card2_value }}</h2>
+                            </div>
+                        </div>
+                    </div>
+                    @if(isset($card3_label) && $card3_label !== '')
+                        <div class="col-md-4 mb-3">
+                            <div class="card border-0 shadow-sm" style="border-radius: 14px;">
+                                <div class="card-body">
+                                    <div class="text-muted small">{{ $card3_label }}</div>
+                                    <h2 class="mb-0">{{ $card3_value }}</h2>
+                                </div>
+                            </div>
+                        </div>
+                    @endif
+                </div>
+
+                <div class="row">
+                    <div class="col-lg-8 mb-3">
+                        <div class="card border-0 shadow-sm" style="border-radius: 14px;">
+                            <div class="card-body">
+                                <h5 class="mb-3">Kalender Pengingat Tugas</h5>
+                                <div id="calendar"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-lg-4 mb-3">
+                        <div class="card border-0 shadow-sm" style="border-radius: 14px;">
+                            <div class="card-body">
+                                <h5 class="mb-3">Deadline Terdekat</h5>
+                                @if($eventList->count() === 0)
+                                    <div class="text-muted">Belum ada deadline tugas.</div>
+                                @else
+                                    <ul class="list-group list-group-flush">
+                                        @foreach($eventList as $ev)
+                                            <li class="list-group-item px-0">
+                                                <div class="fw-semibold">{{ $ev['title'] ?? '-' }}</div>
+                                                <small class="text-muted">{{ $ev['start'] ?? '-' }}</small>
+                                            </li>
+                                        @endforeach
+                                    </ul>
+                                @endif
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
-            <!-- END MAIN CONTENT-->
-            <!-- END PAGE CONTAINER-->
         </div>
-
     </div>
+</div>
 
-    <script src='/vendor/fullcalendar-6.1.11/fullcalendar.min.js'></script>
-    <script>
-      document.addEventListener('DOMContentLoaded', function() {
-        var calendarEl = document.getElementById('calendar');
-        var calendar = new FullCalendar.Calendar(calendarEl, {
-          initialView: 'dayGridMonth',
-          events: @json($events ?? [])
-        });
-        calendar.render();
-      });
-    </script>
+<script src='/vendor/fullcalendar-6.1.11/fullcalendar.min.js'></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const calendarEl = document.getElementById('calendar');
+    if (!calendarEl) return;
+
+    const calendar = new FullCalendar.Calendar(calendarEl, {
+        initialView: 'dayGridMonth',
+        height: 560,
+        headerToolbar: {
+            left: 'prev,next today',
+            center: 'title',
+            right: 'dayGridMonth,timeGridWeek'
+        },
+        events: @json($events ?? []),
+        eventDisplay: 'block'
+    });
+
+    calendar.render();
+});
+</script>

@@ -2,12 +2,18 @@
     <div class="main-content">
         <div class="section__content section__content--p30">
             <div class="container-fluid">
+                @php
+                    $role = strtolower(trim((string) session('role')));
+                    $teacherRoleId = (int) (session('teacher_roleid') ?? 0);
+                    $isKurikulum = in_array($role, ['kurikulum', 'curiculum'], true) || in_array($teacherRoleId, [4, 5], true);
+                    $canManageJadwal = (int) session('level') === 1 || $isKurikulum;
+                @endphp
                 <div class="row">
                     <div class="col-md-12">
                         <div class="overview-wrap">
                             <h2 class="title-1">Jadwal Pelajaran</h2>
                             <div>
-                                @if(session('level') != 3)
+                                @if($canManageJadwal)
                                 <button class="au-btn au-btn-icon au-btn--blue" data-bs-toggle="modal" data-bs-target="#modalSettingJadwal">
                                     <i class="zmdi zmdi-settings"></i>Setting</button>
                                 @endif
@@ -95,7 +101,7 @@
                                                  <td style="background: #f8f9fa; font-weight: bold;">{{ $class->classname }}</td>
                                                  @for($s = 1; $s <= 5; $s++)
                                                  <td class="session-cell" 
-                                                     @if(session('level') != 3)
+                                                     @if($canManageJadwal)
                                                      data-bs-toggle="modal" 
                                                      data-bs-target="#modalJadwal"
                                                      data-classid="{{ $class->classid }}"
@@ -111,7 +117,7 @@
                                                              <small><i class="fas fa-user-tie"></i> {{ $schedules[$class->classid][$s]->teacher->name }}</small>
                                                          </div>
                                                      @else
-                                                        @if(session('level') != 3)
+                                                        @if($canManageJadwal)
                                                          <div class="btn-add-schedule">
                                                              <i class="fas fa-plus"></i>
                                                          </div>
