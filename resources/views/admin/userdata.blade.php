@@ -25,7 +25,7 @@
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            <?php foreach($data as $key) { ?>
+                                            <?php foreach ($data as $key) { ?>
                                             <tr>
                                                 <td><?= $key->username ?></td>
                                                 <td><?= $key->name ?></td>
@@ -64,12 +64,20 @@
                         <input type="text" name="name" class="form-control" required>
                     </div>
                     <div class="mb-2">
+                        <label class="form-label">Username</label>
+                        <input type="text" name="username" class="form-control" required>
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label">Nomor Telepon</label>
+                        <input type="number" name="phonenumber" class="form-control" required>
+                    </div>
+                    <div class="mb-2">
                         <label class="form-label">Email</label>
                         <input type="email" name="email" class="form-control" required>
                     </div>
                     <div class="mb-2">
                         <label class="form-label">Level</label>
-                        <select name="level" id="level-select" class="form-control" required onchange="(function(sel){ const roleWrap=document.getElementById('role-wrap'); const v=sel.value; if(v==='3'){ roleWrap.style.display='none'; } else { roleWrap.style.display='block'; const allowed=v==='1' ? [1,2] : [3,4]; const opts=[...document.querySelectorAll('#role-select option')]; opts.forEach(o=>{ o.style.display = allowed.includes(parseInt(o.value)) ? 'block' : 'none'; }); const first = allowed[0]; document.getElementById('role-select').value = first; } })(this)">
+                        <select name="level" id="level-select" class="form-control" required onchange="(function(sel){ const roleWrap=document.getElementById('role-wrap'); const classWrap=document.getElementById('class-wrap'); const classSelect=document.getElementById('classid-select'); const v=sel.value; if(v==='3'){ roleWrap.style.display='none'; if(classWrap) classWrap.style.display='block'; if(classSelect) classSelect.required = true; } else { roleWrap.style.display='block'; if(classWrap) classWrap.style.display='none'; if(classSelect) { classSelect.required = false; classSelect.value = ''; } const allowed=v==='1' ? [1,2] : [3,4]; const opts=[...document.querySelectorAll('#role-select option')]; opts.forEach(o=>{ o.style.display = allowed.includes(parseInt(o.value)) ? 'block' : 'none'; }); const first = allowed[0]; document.getElementById('role-select').value = first; } })(this)">
                             @foreach($level as $lv)
                             <option value="{{ $lv->levelid }}">{{ $lv->levelname }}</option>
                             @endforeach
@@ -83,13 +91,14 @@
                             @endforeach
                         </select>
                     </div>
-                    <div class="mb-2">
-                        <label class="form-label">Phonenumber</label>
-                        <input type="number" name="phonenumber" class="form-control" required>
-                    </div>
-                    <div class="mb-2">
-                        <label class="form-label">Username</label>
-                        <input type="text" name="username" class="form-control" required>
+                    <div class="mb-2" id="class-wrap" style="display:none;">
+                        <label class="form-label">Kelas</label>
+                        <select name="classid" id="classid-select" class="form-control">
+                            <option value="">-- Pilih Kelas --</option>
+                            @foreach($classes as $c)
+                                <option value="{{ $c->classid }}">{{ $c->classname }}</option>
+                            @endforeach
+                        </select>
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -100,8 +109,14 @@
         </div>
     </div>
 </div>
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const levelSelect = document.getElementById('level-select');
+        if (levelSelect) levelSelect.dispatchEvent(new Event('change'));
+    });
+</script>
 
-<?php foreach($data as $key) { ?>
+<?php foreach ($data as $key) { ?>
 <div class="modal fade" id="moreModal<?= $key->userid ?>" tabindex="-1" aria-labelledby="moreModalLabel<?= $key->userid ?>" aria-hidden="true" style="z-index:1060;">
     <div class="modal-dialog">
         <div class="modal-content">

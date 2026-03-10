@@ -1,4 +1,4 @@
-<div class="col-md-4">
+<div class="col-md-4" id="assignment-card-{{ $assignment->assignmentid }}">
     <div class="card" style="border-radius: 8px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.1); transition: transform 0.2s;">
         <div style="background: linear-gradient(135deg, #4285f4, #34a853); padding: 20px; color: white;">
             <h4 style="color: white; margin-bottom: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ $assignment->name }}</h4>
@@ -17,15 +17,19 @@
                     @if(in_array($assignment->assignmentid, $submittedIds ?? []))
                         <span class="badge bg-success">Sudah Dikerjakan</span>
                     @else
-                        <span class="badge bg-warning text-dark">Belum Dikerjakan</span>
+                        @if(now()->gt(\Carbon\Carbon::parse($assignment->time_end)))
+                            <span class="badge bg-danger">Tidak dikerjakan</span>
+                        @else
+                            <span class="badge bg-warning text-dark">Belum Dikerjakan</span>
+                        @endif
                     @endif
                 @endif
             </div>
         </div>
         <div class="card-footer bg-white border-top-0 d-flex justify-content-between">
             <a href="{{ route('assignment.show', $assignment->assignmentid) }}" class="btn btn-outline-primary btn-sm">Buka Tugas</a>
-            @if(session('level') != 3)
-            <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-toggle="modal" data-bs-target="#editAssignment{{ $assignment->assignmentid }}">Detail</button>
+            @if(session('level') == 2 && strtolower((string) session('role')) == 'guru')
+                <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-toggle="modal" data-bs-target="#editAssignment{{ $assignment->assignmentid }}">Detail</button>
             @endif
         </div>
     </div>

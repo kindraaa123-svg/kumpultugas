@@ -21,6 +21,12 @@
                                         <label class="form-label">Username</label>
                                         <input type="text" class="form-control" value="{{ $user ? $user->username : '' }}" disabled>
                                     </div>
+                                    @if($user && $user->levelid == 3)
+                                        <div class="mb-3">
+                                            <label class="form-label">Kelas</label>
+                                            <input type="text" class="form-control" value="{{ $data && isset($data->classname) ? $data->classname : '' }}" disabled>
+                                        </div>
+                                    @endif
                                     <div class="mb-3">
                                         <label class="form-label">Nama</label>
                                         <input type="text" name="name" class="form-control" value="{{ $data ? $data->name : '' }}" required>
@@ -35,6 +41,7 @@
                                         <input type="text" name="phonenumber" class="form-control" value="{{ $data ? $data->phonenumber : '' }}" readonly>
                                         <small class="text-muted">Gunakan form di sebelah kanan untuk mengubah nomor telepon.</small>
                                     </div>
+                                    
                                     <div class="text-end">
                                         <button type="submit" class="btn btn-primary">Simpan</button>
                                     </div>

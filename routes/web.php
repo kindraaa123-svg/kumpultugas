@@ -4,10 +4,11 @@ use Illuminate\Support\Facades\Route;
 
 Route::fallback('App\Http\Controllers\Ctrl@notfound');
 
+Route::get('/', 'App\Http\Controllers\Ctrl@home');
+
 Route::get('/login', 'App\Http\Controllers\Ctrl@login');
 Route::post('/login/process', 'App\Http\Controllers\Ctrl@loginact');
 Route::get('/logout', 'App\Http\Controllers\Ctrl@logout');
-
 
 Route::get('/home', 'App\Http\Controllers\Ctrl@home');
 
@@ -52,6 +53,11 @@ Route::post('/setting/update', 'App\Http\Controllers\Ctrl@savesetting');
 
 Route::get('/database', 'App\Http\Controllers\Ctrl@databasePage');
 Route::get('/activity-log', 'App\Http\Controllers\Ctrl@activityLog')->name('activity.log');
+Route::get('/hakakses', 'App\Http\Controllers\Ctrl@hakaksesPage')->name('hakakses.index');
+Route::post('/hakakses/update', 'App\Http\Controllers\Ctrl@hakaksesUpdate')->name('hakakses.update');
+Route::get('/trash', 'App\Http\Controllers\Ctrl@trash')->name('trash.index');
+Route::post('/trash/restore', 'App\Http\Controllers\Ctrl@trashRestore')->name('trash.restore');
+Route::post('/trash/delete', 'App\Http\Controllers\Ctrl@trashDelete')->name('trash.delete');
 Route::get('/database/export', 'App\Http\Controllers\Ctrl@exportDatabase');
 Route::post('/database/import', 'App\Http\Controllers\Ctrl@importDatabase');
 
@@ -65,11 +71,17 @@ Route::post('/jadwal/update', 'App\Http\Controllers\JadwalController@updateSched
 // Assignment (Tugas)
 Route::get('/assignment', 'App\Http\Controllers\AssignmentController@index')->name('assignment.index');
 Route::get('/assignment/filter', 'App\Http\Controllers\AssignmentController@filter')->name('assignment.filter');
+Route::get('/assignment/courses/filter', 'App\Http\Controllers\AssignmentController@filterCourses')->name('assignment.courses.filter');
+Route::get('/assignment/schedules/filter', 'App\Http\Controllers\AssignmentController@filterTeacherSchedules')->name('assignment.schedules.filter');
+Route::post('/assignment/room/store', 'App\Http\Controllers\AssignmentController@storeRoom')->name('assignment.room.store');
 Route::get('/assignment/create', 'App\Http\Controllers\AssignmentController@create')->name('assignment.create');
 Route::post('/assignment/store', 'App\Http\Controllers\AssignmentController@store')->name('assignment.store');
+Route::post('/assignment/delete', 'App\Http\Controllers\AssignmentController@deleteAjax')->name('assignment.delete.ajax');
 Route::get('/assignment/show/{id}', 'App\Http\Controllers\AssignmentController@show')->name('assignment.show');
 Route::post('/assignment/upload', 'App\Http\Controllers\AssignmentController@upload')->name('assignment.upload');
 Route::post('/assignment/update', 'App\Http\Controllers\AssignmentController@update')->name('assignment.update');
 Route::get('/assignment/delete/{id}', 'App\Http\Controllers\AssignmentController@delete')->name('assignment.delete');
+Route::post('/assignment/room/delete', 'App\Http\Controllers\AssignmentController@deleteRoom')->name('assignment.room.delete');
 Route::get('/assignment/review', 'App\Http\Controllers\AssignmentController@review')->name('assignment.review');
+Route::get('/assignment/review/filter', 'App\Http\Controllers\AssignmentController@reviewFilter')->name('assignment.review.filter');
 Route::post('/assignment/grade', 'App\Http\Controllers\AssignmentController@grade')->name('assignment.grade');
